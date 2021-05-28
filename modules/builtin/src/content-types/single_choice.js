@@ -1,4 +1,5 @@
 const base = require('./_base')
+const utils = require('./_utils')
 
 function render(data) {
   const events = []
@@ -10,6 +11,23 @@ function render(data) {
     })
   }
 
+  if (data.isDropdown) {
+    return [
+      ...events,
+      {
+        type: 'custom',
+        module: 'extensions',
+        component: 'Dropdown',
+        message: data.text,
+        buttonText: '',
+        displayInKeyboard: true,
+        options: data.choices.map(c => ({ label: c.title, value: c.value.toUpperCase() })),
+        width: 300,
+        placeholderText: data.dropdownPlaceholder
+      }
+    ]
+  }
+
   return [
     ...events,
     {
@@ -18,91 +36,48 @@ function render(data) {
         title: c.title,
         payload: c.value.toUpperCase()
       })),
-      typing: data.typing
-    }
-  ]
-}
-
-function renderMessenger(data) {
-  const events = []
-
-  if (data.typing) {
-    events.push({
-      type: 'typing',
-      value: data.typing
-    })
-  }
-
-  return [
-    ...events,
-    {
-      text: data.text,
-      quick_replies: data.choices.map(c => ({
-        content_type: 'text',
-        title: c.title,
-        payload: c.value.toUpperCase()
-      }))
-    }
-  ]
-}
-
-function renderSlack(data) {
-  const events = []
-
-  if (data.typing) {
-    events.push({
-      type: 'typing',
-      value: data.typing
-    })
-  }
-
-  return [
-    ...events,
-    {
-      text: data.text,
-      quick_replies: {
-        type: 'actions',
-        elements: data.choices.map((q, idx) => ({
-          type: 'button',
-          action_id: 'replace_buttons' + idx,
-          text: {
-            type: 'plain_text',
-            text: q.title
-          },
-          value: q.value.toUpperCase()
-        }))
-      }
+      typing: data.typing,
+      markdown: data.markdown,
+      disableFreeText: data.disableFreeText
     }
   ]
 }
 
 function renderElement(data, channel) {
-  if (channel === 'messenger') {
-    return renderMessenger(data)
-  } else if (channel === 'slack') {
-    return renderSlack(data)
-  } else {
-    return render(data)
+  // These channels now use channel renderers
+  if (['telegram', 'twilio', 'slack', 'smooch', 'vonage', 'teams', 'messenger'].includes(channel)) {
+    return utils.extractPayload('single-choice', data)
   }
+
+  return render(data)
 }
 
 module.exports = {
   id: 'builtin_single-choice',
   group: 'Built-in Messages',
-  title: 'Single Choice',
+  title: 'module.builtin.types.singleChoice.title',
 
   jsonSchema: {
-    description: 'Suggest choices to the user with the intention of picking only one (with an optional message)',
+    description: 'module.builtin.types.singleChoice.description',
     type: 'object',
     required: ['choices'],
     properties: {
       text: {
         type: 'string',
-        title: 'Message'
+        title: 'message'
+      },
+      isDropdown: {
+        type: 'boolean',
+        title: 'Show as a dropdown'
+      },
+      dropdownPlaceholder: {
+        type: 'string',
+        title: 'Dropdown placeholder',
+        default: 'Select...'
       },
       choices: {
         type: 'array',
-        title: 'Choices',
+        title: 'module.builtin.types.singleChoice.choice',
         minItems: 1,
         maxItems: 10,
         items: {
@@ -110,18 +85,27 @@ module.exports = {
           required: ['title', 'value'],
           properties: {
             title: {
-              description: 'The title of the choice (this is what gets shown to the user)',
+              description: 'module.builtin.types.singleChoice.itemTitle',
               type: 'string',
               title: 'Message'
             },
             value: {
-              description:
-                'The value that your bot gets when the user picks this choice (usually hidden from the user)',
+              description: 'module.builtin.types.singleChoice.itemValue',
               type: 'string',
               title: 'Value'
             }
           }
         }
+      },
+      markdown: {
+        type: 'boolean',
+        title: 'module.builtin.useMarkdown',
+        default: true
+      },
+      disableFreeText: {
+        type: 'boolean',
+        title: 'module.builtin.disableFreeText',
+        default: false
       },
       ...base.typingIndicators
     }

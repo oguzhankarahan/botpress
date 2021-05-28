@@ -11,9 +11,4 @@ export interface Config {
    * @default botpress
    */
   qnaMakerKnowledgebase?: string
-  /**
-   * List of categories, separated by a comma
-   * @default global
-   */
-  qnaCategories?: string
 }

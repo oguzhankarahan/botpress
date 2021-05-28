@@ -1,11 +1,16 @@
+import ReactGA from 'react-ga'
+import snarkdown from 'snarkdown'
+
 export const getOverridedComponent = (overrides, componentName) => {
-  if (overrides && overrides[componentName]) {
+  if (overrides?.[componentName]) {
     const { module, component } = overrides[componentName]
     if (module && component) {
       return window.botpress[module][component]
     }
   }
 }
+
+export const isIE = window.navigator.userAgent.match(/MSIE|Trident/) !== null
 
 export const asyncDebounce = async timeMs => {
   let lastClickInMs = undefined
@@ -41,19 +46,51 @@ export const checkLocationOrigin = () => {
   if (!window.location.origin) {
     const { protocol, hostname, port } = window.location
     // @ts-ignore
-    window.location.origin = `${protocol}//${hostname}${port && ':' + port}`
+    window.location.origin = `${protocol}//${hostname}${port && `:${port}`}`
   }
 }
 
 export const initializeAnalytics = () => {
-  if (window.botpressWebChat && window.botpressWebChat.sendUsageStats) {
+  if (window.SEND_USAGE_STATS) {
     try {
       // @ts-ignore
-      ReactGA.initialize('UA-90044826-2')
+      ReactGA.initialize('UA-90044826-2', {
+        gaOptions: {
+          // @ts-ignore
+          userId: window.UUID
+        }
+      })
       // @ts-ignore
-      ReactGA.event({ category: 'WebChat', action: 'render', nonInteraction: true })
+      ReactGA.pageview(window.location.pathname + window.location.search)
     } catch (err) {
-      console.log('Error init analytics', err)
+      console.error('Error init analytics', err)
     }
   }
+}
+
+export const trackMessage = (direction: 'sent' | 'received') => {
+  if (window.SEND_USAGE_STATS) {
+    try {
+      ReactGA.event({ category: 'Interactions', action: `message ${direction}` })
+    } finally {
+    }
+  }
+}
+
+export const trackWebchatState = (state: 'show' | 'hide' | 'toggle') => {
+  if (window.SEND_USAGE_STATS) {
+    try {
+      ReactGA.event({ category: 'Display', action: state })
+    } finally {
+    }
+  }
+}
+
+export const renderUnsafeHTML = (message: string = '', escaped: boolean): string => {
+  if (escaped) {
+    message = message.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  }
+
+  const html = snarkdown(message)
+  return html.replace(/<a href/gi, '<a target="_blank" href')
 }

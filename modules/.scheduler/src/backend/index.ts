@@ -33,14 +33,14 @@ let db = undefined
 const onServerStarted = async (bp: typeof sdk & Extension) => {
   db = new SchedulerDb(bp)
   await db.initialize()
-
-  const daemon = Daemon(bp, db)
-  await daemon.revive()
-  daemon.start()
 }
 
 const onServerReady = async (bp: typeof sdk & Extension) => {
   await api(bp, db)
+
+  const daemon = Daemon(bp, db)
+  await daemon.revive()
+  daemon.start()
 }
 
 const obj: sdk.ModuleEntryPoint = {
@@ -50,7 +50,7 @@ const obj: sdk.ModuleEntryPoint = {
     name: 'scheduler',
     menuIcon: 'alarm_on',
     fullName: 'Scheduler',
-    homepage: 'https://botpress.io',
+    homepage: 'https://botpress.com',
     noInterface: false,
     plugins: [],
     moduleView: { stretched: true }

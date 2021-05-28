@@ -1,24 +1,30 @@
-import { Button } from '@blueprintjs/core'
+import { Button, Icon, Position, Tooltip } from '@blueprintjs/core'
+import { lang } from 'botpress/shared'
 import cx from 'classnames'
-import { ContentState, EditorState, Modifier } from 'draft-js'
+import { ContentState, EditorState, getDefaultKeyBinding, KeyBindingUtil, Modifier } from 'draft-js'
 import Editor from 'draft-js-plugins-editor'
 import createSingleLinePlugin from 'draft-js-single-line-plugin'
 import * as React from 'react'
-import { Component } from 'react'
 import { connect } from 'react-redux'
 import { refreshHints } from '~/actions'
 import store from '~/store'
 
-import style from './styles.scss'
 import createMentionPlugin, { defaultSuggestionsFilter } from './Base'
+import style from './styles.scss'
 
 interface ExposedProps {
+  children?: any
   className?: string
   placeholder?: string
+  isSideForm?: boolean
   singleLine: boolean
+  readOnly?: boolean
   value: string
   onChange: (value: string) => void
 }
+
+const { hasCommandModifier } = KeyBindingUtil
+const A_KEY = 65
 
 type ConnectedProps = ExposedProps & { hints: any[] }
 
@@ -29,7 +35,7 @@ interface State {
   suggestions: any[]
 }
 
-class SmartInput extends Component<ConnectedProps, State> {
+class SmartInput extends React.Component<ConnectedProps, State> {
   valueAsText = '' // A local cache of what the last text value of the input was for performance reasons
   editor: any
 
@@ -96,9 +102,39 @@ class SmartInput extends Component<ConnectedProps, State> {
     return placeholder.length > 50 ? placeholder.substring(0, 50) + '...' : placeholder
   }
 
+  handleKeydown = e => {
+    if (e.keyCode === A_KEY && hasCommandModifier(e)) {
+      return 'myeditor-save'
+    }
+
+    return getDefaultKeyBinding(e)
+  }
+
+  getAllSelection = () => {
+    const currentContent = this.state.editorState.getCurrentContent()
+
+    return this.state.editorState.getSelection().merge({
+      anchorKey: currentContent.getFirstBlock().getKey(),
+      anchorOffset: 0,
+
+      focusOffset: currentContent.getLastBlock().getText().length,
+      focusKey: currentContent.getLastBlock().getKey()
+    })
+  }
+
+  handleKeyCommand = (command: string) => {
+    if (command === 'myeditor-save') {
+      this.setState({
+        editorState: EditorState.forceSelection(this.state.editorState, this.getAllSelection())
+      })
+      return 'handled'
+    }
+    return 'not-handled'
+  }
+
   render() {
     const { MentionSuggestions } = this.mentionPlugin
-    const plugins = [this.mentionPlugin]
+    const plugins: any[] = [this.mentionPlugin]
 
     if (this.props.singleLine) {
       plugins.push(createSingleLinePlugin())
@@ -107,17 +143,27 @@ class SmartInput extends Component<ConnectedProps, State> {
     return (
       <div className={cx(style.editor, this.props.className)} onClick={this.focus}>
         <Editor
-          stripPastedStyles={true}
+          stripPastedStyles
           placeholder={this.placeholder}
           editorState={this.state.editorState}
+          handleKeyCommand={this.handleKeyCommand}
+          keyBindingFn={this.handleKeydown}
           onChange={this.onChange}
           plugins={plugins}
           ref={el => (this.editor = el)}
+          readOnly={this.props.readOnly}
         />
-        <MentionSuggestions onSearchChange={this.onSearchChange} suggestions={this.state.suggestions} />
-        <div className={style.insertBtn}>
-          <Button minimal={true} small={true} icon="insert" text={undefined} onClick={this.insertVariable} />
-        </div>
+        {!this.props.readOnly && (
+          <>
+            <MentionSuggestions onSearchChange={this.onSearchChange} suggestions={this.state.suggestions} />
+            <div className={cx(style.insertBtn, { [style.insertBtnMoreSpacing]: this.props.isSideForm })}>
+              <Tooltip content={lang.tr('studio.content.insertVariable')} position={Position.TOP}>
+                <Button minimal small icon={<Icon icon="code" />} text={undefined} onClick={this.insertVariable} />
+              </Tooltip>
+              {this.props.children}
+            </div>
+          </>
+        )}
       </div>
     )
   }
@@ -125,10 +171,7 @@ class SmartInput extends Component<ConnectedProps, State> {
 
 const mapDispatchToProps = { refreshHints }
 const mapStateToProps = ({ hints: { inputs } }) => ({ hints: inputs })
-const ConnectedSmartInput = connect(
-  mapStateToProps,
-  mapDispatchToProps
-)(SmartInput)
+const ConnectedSmartInput = connect(mapStateToProps, mapDispatchToProps)(SmartInput)
 
 // Passing store explicitly since this component may be imported from another botpress-module
 export default (props: ExposedProps) => <ConnectedSmartInput {...props} store={store} />

@@ -1,36 +1,25 @@
+import path from 'path'
+
 import { bpConfig } from '../../../jest-puppeteer.config'
-import { clickOn, expectMatch, fillField } from '../expectPuppeteer'
-import { expectAdminApiCallSuccess, expectCallSuccess } from '../utils'
+import { clickOn, expectMatch, fillField, uploadFile } from '../expectPuppeteer'
+import { closeToaster, expectAdminApiCallSuccess, expectCallSuccess, getResponse } from '../utils'
 
 describe('Admin - UI', () => {
+  it('Load code editor page', async () => {
+    await clickOn('#btn-menu-code-editor')
+    const response = await getResponse(`${bpConfig.apiHost}/api/v1/bots/___/mod/code-editor/files`, 'GET')
+    expect(response.status()).toBe(200)
+  })
+
   it('Load server license page', async () => {
-    await clickOn('#btn-menu')
-    await clickOn('#btn-manage')
-    await expectMatch('Enable Botpress Professionnal')
+    await clickOn('#btn-menu-license')
+    await expectMatch(new RegExp('Enable Botpress Professional|Cluster fingerprint|Unofficial Botpress Build'))
   })
 
   it('Load version control page', async () => {
-    await clickOn('a', { text: 'Version Control' })
+    await clickOn('#btn-menu-version')
     await expectMatch('pull --url http')
-    await expectMatch('push --url http')
-  })
-
-  it('Load debugging page', async () => {
-    await clickOn('a', { text: 'Debug' })
-    await expectMatch('Configure Debug')
-
-    await clickOn('#btn-refresh')
-    await expectAdminApiCallSuccess('server/debug', 'GET')
-
-    await clickOn('#btn-save')
-    await expectAdminApiCallSuccess('server/debug', 'POST')
-  })
-
-  it('Load languages page', async () => {
-    await clickOn('a', { text: 'Languages' })
-    await expectMatch('Using lang server at')
-    await expectMatch('Installed Languages')
-    await expectAdminApiCallSuccess('languages', 'GET')
+    await expectMatch('Push local to this server')
   })
 
   it('Change user profile', async () => {
@@ -38,19 +27,33 @@ describe('Admin - UI', () => {
     await clickOn('#btn-profile')
     await fillField('#input-firstname', 'Bob')
     await fillField('#input-lastname', 'Lalancette')
-    await clickOn('#btn-save')
-    await expectCallSuccess(`${bpConfig.host}/api/v1/auth/me/profile`, 'POST')
+    await uploadFile('input[type="file"]', path.join(__dirname, '../assets/alien.png'))
+    const { url } = await expectCallSuccess(`${bpConfig.host}/api/v1/media`, 'POST')
+    await Promise.all([expectCallSuccess(`${bpConfig.host}/api/v2/admin/user/profile`, 'POST'), clickOn('#btn-submit')])
+    await closeToaster()
+    const src = await page.$eval('img.dropdown-picture', img => img.getAttribute('src'))
+    expect(src.includes(url)).toBeTrue
     await clickOn('#btn-menu')
     await expectMatch('Signed in as Bob Lalancette')
     await clickOn('#btn-menu')
   })
 
+  it('Load languages page', async () => {
+    await clickOn('#btn-menu-language')
+    await expectMatch('Using lang server at')
+    await expectMatch('Installed Languages')
+    await expectAdminApiCallSuccess('management/languages', 'GET')
+  })
+
   it('Update password', async () => {
-    await clickOn('#btn-changePassword')
+    await clickOn('#btn-menu')
+    await clickOn('#btn-changepass')
     await fillField('#input-password', bpConfig.password)
     await fillField('#input-newPassword', bpConfig.password)
     await fillField('#input-confirmPassword', bpConfig.password)
-    await clickOn('#btn-submit')
-    await expectCallSuccess(`${bpConfig.host}/api/v1/auth/login/basic/default`, 'POST')
+    await Promise.all([
+      expectCallSuccess(`${bpConfig.host}/api/v2/admin/auth/login/basic/default`, 'POST'),
+      clickOn('#btn-submit')
+    ])
   })
 })

@@ -1,7 +1,5 @@
 import * as sdk from 'botpress/sdk'
-
 import { Config } from '../config'
-
 import { setupMiddleware, SlackClient } from './client'
 import { Clients } from './typings'
 
@@ -21,7 +19,7 @@ const onServerReady = async (bp: typeof sdk) => {
 }
 
 const onBotMount = async (bp: typeof sdk, botId: string) => {
-  const config = (await bp.config.getModuleConfigForBot('channel-slack', botId)) as Config
+  const config = (await bp.config.getModuleConfigForBot('channel-slack', botId, true)) as Config
 
   if (config.enabled) {
     const bot = new SlackClient(bp, botId, config, router)
@@ -37,6 +35,7 @@ const onBotUnmount = async (bp: typeof sdk, botId: string) => {
     return
   }
 
+  await client.shutdown()
   delete clients[botId]
 }
 
@@ -51,7 +50,7 @@ const entryPoint: sdk.ModuleEntryPoint = {
     menuText: 'Channel Slack',
     noInterface: true,
     fullName: 'Slack',
-    homepage: 'https://botpress.io'
+    homepage: 'https://botpress.com'
   }
 }
 

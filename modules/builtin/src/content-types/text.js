@@ -1,4 +1,5 @@
 const base = require('./_base')
+const utils = require('./_utils')
 
 function render(data) {
   const events = []
@@ -14,79 +15,48 @@ function render(data) {
     ...events,
     {
       type: 'text',
-      markdown: true,
-      text: data.text
-    }
-  ]
-}
-
-function renderMessenger(data) {
-  const events = []
-
-  if (data.typing) {
-    events.push({
-      type: 'typing',
-      value: data.typing
-    })
-  }
-
-  return [
-    ...events,
-    {
-      text: data.text
-    }
-  ]
-}
-
-function renderTeams(data) {
-  const events = []
-
-  if (data.typing) {
-    events.push({
-      type: 'typing'
-    })
-  }
-
-  return [
-    ...events,
-    {
-      type: 'message',
-      text: data.text
+      markdown: data.markdown,
+      text: data.text,
+      collectFeedback: data.collectFeedback
     }
   ]
 }
 
 function renderElement(data, channel) {
-  if (channel === 'messenger') {
-    return renderMessenger(data)
-  } else if (channel === 'teams') {
-    return renderTeams(data)
-  } else {
-    return render(data)
+  // These channels now use channel renderers
+  if (['telegram', 'twilio', 'slack', 'smooch', 'vonage', 'teams', 'messenger'].includes(channel)) {
+    return utils.extractPayload('text', data)
   }
+
+  return render(data)
 }
 
 module.exports = {
   id: 'builtin_text',
   group: 'Built-in Messages',
-  title: 'Text',
+  title: 'text',
 
   jsonSchema: {
-    description: 'A regular text message with optional typing indicators and alternates',
+    description: 'module.builtin.types.text.description',
     type: 'object',
     required: ['text'],
     properties: {
       text: {
         type: 'string',
-        title: 'Message'
+        title: 'module.builtin.types.text.message'
       },
       variations: {
         type: 'array',
-        title: 'Alternates (optional)',
+        title: 'module.builtin.types.text.alternatives',
         items: {
           type: 'string',
           default: ''
         }
+      },
+      markdown: {
+        type: 'boolean',
+        title: 'module.builtin.useMarkdown',
+        default: true
       },
       ...base.typingIndicators
     }
@@ -103,7 +73,7 @@ module.exports = {
       }
     }
   },
-  computePreviewText: formData => formData.text && 'Text: ' + formData.text,
+  computePreviewText: formData => formData.text,
 
   renderElement: renderElement
 }

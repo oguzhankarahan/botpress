@@ -18,16 +18,22 @@ const onServerReady = async (bp: typeof sdk) => {
     checkAuthentication: false
   })
 
-  router.post(`/api/messages`, async (req, res) => {
+  router.post('/api/messages', async (req, res, next) => {
     const client = clients[req.params.botId]
-    client && (await client.receiveIncomingEvent(req, res))
+    try {
+      client && (await client.receiveIncomingEvent(req, res))
+    } catch (err) {
+      bp.logger.error(err)
+      next(err)
+    }
+    next()
   })
 
   publicPath = await router.getPublicPath()
 }
 
 const onBotMount = async (bp: typeof sdk, botId: string) => {
-  const config = (await bp.config.getModuleConfigForBot('channel-teams', botId)) as Config
+  const config = (await bp.config.getModuleConfigForBot('channel-teams', botId, true)) as Config
 
   if (config.enabled) {
     const bot = new TeamsClient(bp, botId, config, publicPath)
@@ -60,7 +66,7 @@ const entryPoint: sdk.ModuleEntryPoint = {
     name: 'channel-teams',
     menuIcon: 'none', // no interface = true
     fullName: 'Teams',
-    homepage: 'https://botpress.io',
+    homepage: 'https://botpress.com',
     noInterface: true,
     plugins: []
   }

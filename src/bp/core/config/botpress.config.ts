@@ -1,10 +1,13 @@
 import { ConverseConfig } from 'botpress/sdk'
-import { UniqueUser } from 'common/typings'
-import { IncidentRule } from 'core/services/alerting-service'
+import { CookieOptions } from 'express'
+import { Algorithm } from 'jsonwebtoken'
+
+import { ActionServer, UniqueUser } from '../../common/typings'
+import { IncidentRule } from '../health/alerting-service'
 
 export type BotpressCondition = '$isProduction' | '$isDevelopment'
 
-export type ModuleConfigEntry = {
+export interface ModuleConfigEntry {
   location: string
   enabled: boolean
 }
@@ -17,7 +20,7 @@ export interface DialogConfig {
   janitorInterval: string
   /**
    * Interval before a session's context expires.
-   * e.g. when the conversation is stale and has not reach the END of the flow.
+   * e.g. when the conversation is stale and has not reached the END of the flow.
    * This will reset the position of the user in the flow.
    * @default 2m
    */
@@ -28,17 +31,6 @@ export interface DialogConfig {
    * @default 30m
    */
   sessionTimeoutInterval: string
-}
-
-/**
- * Configuration file definition for the Converse API
- */
-export type ConverseConfig = {
-  /**
-   * The timeout of the converse API requests
-   * @default 5s
-   */
-  timeout: string
 }
 
 export interface LogsConfig {
@@ -83,7 +75,7 @@ export interface LogsConfig {
  * We use the library "ms", so head over to this page to see supported formats: https://www.npmjs.com/package/ms
  */
 
-export type BotpressConfig = {
+export interface BotpressConfig {
   version: string
   appSecret: string
   httpServer: {
@@ -96,8 +88,8 @@ export type BotpressConfig = {
      */
     port: number
     /**
-     * There are two external URL that Botpress calls: https://license.botpress.io and https://duckling.botpress.io
-     * If you are behind a corporare proxy, you can configure it below.
+     * There are three external URLs that Botpress calls: https://license.botpress.io, https://duckling.botpress.io and https://lang-01.botpress.io
+     * If you are behind a corporate proxy, you can configure it below.
      * It is also possible to self-host Duckling, please check the documentation
      *
      * @example http://username:password@hostname:port
@@ -108,21 +100,26 @@ export type BotpressConfig = {
      */
     backlog: number
     /**
-     * @default 100kb
+     * @default 10mb
      */
     bodyLimit: string | number
+    /**
+     * CORS policy for the server. You can provide other configuration parameters
+     * listed on this page: https://expressjs.com/en/resources/middleware/cors.html
+     */
     cors: {
       /**
        * @default true
        */
       enabled?: boolean
       origin?: string
+      credentials?: boolean
     }
     /**
      * Represents the complete base URL exposed externally by your bot. This is useful if you configure the bot
      * locally and use NGINX as a reverse proxy to handle HTTPS. It should include the protocol and no trailing slash.
      * If unset, it will be constructed from the real host/port
-     * @example https://botpress.io
+     * @example https://botpress.com
      * @default
      */
     externalUrl: string
@@ -138,6 +135,35 @@ export type BotpressConfig = {
        */
       maxAge: string
     }
+    /**
+     * Configure the priority for establishing socket connections for webchat and studio users.
+     * If the first method is not supported, it will fallback on the second.
+     * If the first is supported but it fails with an error, it will not fallback.
+     * @default ["websocket","polling"]
+     */
+    socketTransports: string[]
+    rateLimit: {
+      /**
+       * * Security option to rate limit potential attacker trying to brute force something
+       * @default false
+       */
+      enabled: boolean
+      /**
+       * Time window to compute rate limiting
+       * @default 30s
+       */
+      limitWindow: string
+      /**
+       * * Maximum number of request in limit window to ban an IP. Keep in mind that this includes admin, studio and chat request so don't put it too low
+       * @default 600
+       */
+      limit: number
+    }
+    /**
+     * Adds default headers to the server's responses
+     * @default {"X-Powered-By":"Botpress"}
+     */
+    headers: { [name: string]: string }
   }
   converse: ConverseConfig
   dialog: DialogConfig
@@ -157,7 +183,7 @@ export type BotpressConfig = {
     enabled: boolean
     /**
      * The license key for the server.  Optionally you can use the BP_LICENSE_KEY env variable.
-     * You can purchase a license on https://botpress.io
+     * You can purchase a license on https://botpress.com
      * For usage with Botpress Pro/Enterprise.
      * @default paste your license key here
      */
@@ -169,7 +195,7 @@ export type BotpressConfig = {
      */
     alerting: AlertingConfig
     /**
-     * External Authentication makes it possible to authenticate end-users (chat users) from an other system
+     * External Authentication makes it possible to authenticate end-users (chat users) from another system
      * by using JWT tokens.
      *
      * In addition to authenticate the users, the JWT token can also contain arbitrary additional
@@ -179,10 +205,49 @@ export type BotpressConfig = {
      * will be available in `event.credentials`.
      */
     externalAuth?: ExternalAuthConfig
+    /**
+     * Configure the branding of the admin panel and the studio. A valid license is required
+     */
+    branding: {
+      admin: {
+        /**
+         * Change the name displayed in the title bar on the admin panel
+         * @example "Botpress Admin Panel"
+         */
+        title?: string
+        /**
+         * Replace the default favicon
+         * @example "assets/ui-studio/public/img/favicon.png"
+         */
+        favicon?: string
+        /**
+         * Path to your custom stylesheet
+         * @example "assets/custom/my-stylesheet.css"
+         */
+        customCss?: string
+      }
+      studio: {
+        /**
+         * Change the name displayed in the title bar on the studio
+         * @example "Botpress Studio"
+         */
+        title?: string
+        /**
+         * Replace the default favicon
+         * @example "assets/ui-studio/public/img/favicon.png"
+         */
+        favicon?: string
+        /**
+         * Path to your custom stylesheet
+         * @example "assets/my-stylesheet.css"
+         */
+        customCss: string
+      }
+    }
   }
   /**
    * An array of e-mails of users which will have root access to Botpress (manage users, server settings)
-   * @example: [admin@botpress.io]
+   * @example: [admin@botpress.com]
    */
   superAdmins: UniqueUser[]
   /**
@@ -211,19 +276,19 @@ export type BotpressConfig = {
   fileUpload: {
     /**
      * Maximum file size for media files upload (in mb)
-     * @default 10mb
+     * @default 25mb
      */
     maxFileSize: string
     /**
      * The list of allowed extensions for media file uploads
-     * @default ["image/jpeg","image/png","image/gif"]
+     * @default ["image/jpeg","image/png","image/gif","audio/mpeg","video/mp4"]
      */
     allowedMimeTypes: string[]
   }
   jwtToken: {
     /**
      * The duration for which the token granting access to manage Botpress will be active.
-     * @default 6h
+     * @default 1h
      */
     duration: string
     /**
@@ -231,6 +296,16 @@ export type BotpressConfig = {
      * @default true
      */
     allowRefresh: boolean
+    /**
+     * Use an HTTP-Only secure cookie instead of the local storage for the JWT Token
+     * @default false
+     */
+    useCookieStorage: boolean
+    /**
+     * Configure the options of the cookie sent to the user, for example the domain
+     * @default {}
+     */
+    cookieOptions?: CookieOptions
   }
   /**
    * When enabled, a bot revision will be stored in the revisions directory when it change or its about to change stage
@@ -238,6 +313,7 @@ export type BotpressConfig = {
    */
   autoRevision: boolean
   eventCollector: EventCollectorConfig
+  botMonitoring: BotMonitoringConfig
   /**
    * @default { "default": { "type": "basic", "allowSelfSignup": false, "options": { "maxLoginAttempt": 0} }}
    */
@@ -250,10 +326,43 @@ export type BotpressConfig = {
    * @default true
    */
   showPoweredBy: boolean
+  /**
+   * When true, the bot will avoid repeating itself. By default it is disabled.
+   * Use in conjunction with BP_DECISION_MIN_NO_REPEAT to set the time before the bot will repeat itself
+   * @default false
+   */
+  noRepeatPolicy: boolean
+  /**
+   * By adding this, you'll make possible to translate a bot in more languages than those supported by your botpress language server
+   * Warning: This means that Botpress NLU won't be working properly and you'll need to handle NLU on your own with a **beforeIncoming** Hook.
+   * @example [{name: 'Swedish', code: 'sv'}]
+   * @default []
+   */
+  additionalLanguages?: { name: string; code: string }[]
+
+  /**
+   * Action Servers to be used when dispatching actions.
+   */
+
+  actionServers: ActionServersConfig
+  /**
+   * Whether or not to display experimental features throughout the UI. These are subject
+   * to change and can be unstable.
+   * @default false
+   */
+  experimental: boolean
+
+  telemetry: {
+    /**
+     * The number of entries stored in the telemetry database
+     * @default 1000
+     */
+    entriesLimit: number
+  }
 }
 
 export interface ExternalAuthConfig {
-  /** Set to true to enable external authentification
+  /** Set to true to enable external authentication
    * @default false
    */
   enabled: boolean
@@ -271,13 +380,31 @@ export interface ExternalAuthConfig {
    * The algorithms allowed to validate the JWT tokens.
    * @default ["HS256"]
    */
-  algorithms: string[]
+  algorithms: Algorithm[]
   /**
    * You need to provide the public key used to verify the JWT token authenticity.
    * If not provided, the public key will be read from `data/global/end_users_auth.key`
    * @default insert key here
    */
   publicKey?: string
+  /**
+   * Alternatively, you can configure a client to fetch a JWKS file for the public key.
+   * The audience, issuer and algorithms must also be provided.
+   */
+  jwksClient?: {
+    /**
+     * The full URL to the jwks.json file
+     */
+    jwksUri: string
+    /**
+     * The ID of the key in the jwks file
+     */
+    keyId: string
+    /**
+     * Provide additional options to pass to jwks-rsa (https://github.com/auth0/node-jwks-rsa)
+     */
+    [keyName: string]: any
+  }
 }
 
 export interface DataRetentionConfig {
@@ -293,23 +420,27 @@ export interface DataRetentionConfig {
  * @example "profile.email": "30d"
  * @default {}
  */
-export type RetentionPolicy = {
+export interface RetentionPolicy {
   [key: string]: string
 }
 
-export type AuthStrategyType = 'basic' | 'saml' | 'ldap'
+export type AuthStrategyType = 'basic' | 'saml' | 'ldap' | 'oauth2'
 
 export interface AuthStrategy {
-  readonly id: string
+  readonly id?: string
   /**
    * Defines which authentication strategy to use. When the strategy is changed, accounts created before may no longer log in.
    * @default basic
    */
   type: AuthStrategyType
   /**
-   * Defines custom options based on the chosen authentication strategy
+   * Set a label to display to users instead of the ID (ex: Botpress SSO)
    */
-  options: AuthStrategySaml | AuthStrategyLdap | AuthStrategyBasic | undefined
+  label?: string
+  /**
+   * Defines custom options based on the chosen authentication strategy.
+   */
+  options: AuthStrategySaml | AuthStrategyLdap | AuthStrategyBasic | AuthStrategyOauth2 | undefined
   /**
    * Maps the values returned by your provider to Botpress user parameters.
    * @example fieldMapping: { email: 'emailAddress', fullName: 'givenName' }
@@ -327,7 +458,7 @@ export interface AuthStrategyBasic {
   /**
    * The maximum number of wrong passwords the user can enter before his account is locked out.
    * Set it to 0 for unlimited tries
-   * @default 0
+   * @default 3
    */
   maxLoginAttempt: number
   /**
@@ -393,6 +524,46 @@ export interface AuthStrategySaml {
   acceptedClockSkewMs: number
 }
 
+export interface AuthStrategyOauth2 {
+  authorizationURL: string
+  tokenURL: string
+  clientID: string
+  clientSecret: string
+  /**
+   * Scopes that should be requested from the service provider. Don't forget to map them in the fieldMapping property
+   * @default openid profile email
+   */
+  scope: string | string[]
+  /**
+   * The Callback URL on this server where the service provider will return the user. Replace the last part with the strategy ID
+   * @default http://localhost:3000/api/v1/auth/login-callback/oauth2/myauth
+   */
+  callbackURL: string
+  /*
+   * Set this URL if your access token doesn't include user data. Botpress will query that URL to fetch user information
+   * @example https://botpress.com/userinfo
+   */
+  userInfoURL?: string
+  /** If the access token is a JWT token, set the parameters below to decode it. */
+  jwtToken?: {
+    /** If provided, the audience of the token will be checked against the provided value(s). */
+    audience?: string | string[]
+    /** If provided, the issuer of the token will be checked against the provided value(s). */
+    issuer?: string | string[]
+    /**
+     * The algorithms allowed to validate the JWT tokens.
+     * @default ["HS256"]
+     */
+    algorithms: Algorithm[]
+    /**
+     * The public certificate starting with "-----BEGIN CERTIFICATE-----"
+     * The string should be provided as one line (use \n for new lines)
+     * If the key is not set, it will try to read the file `data/global/oauth2_YOUR_STRATEGY_ID.pub`
+     */
+    publicKey?: string
+  }
+}
+
 export interface AuthStrategyLdap {
   serverUrl: string
   /**
@@ -417,7 +588,9 @@ export interface AuthStrategyLdap {
   certificates: string[]
 }
 
-export type FieldMapping = { [bpAttribute: string]: string }
+export interface FieldMapping {
+  [bpAttribute: string]: string
+}
 
 export interface MonitoringConfig {
   /**
@@ -467,14 +640,29 @@ export interface AlertingConfig {
   /**
    * The list of rules which triggers an incident. When triggered, the OnIncidentChangedStatus hook
    * is called with the incident.
+   * @default []
    */
   rules: IncidentRule[]
+}
+
+export interface BotMonitoringConfig {
+  /**
+   * This must be enabled for the hook OnBotError to work properly.
+   * @default true
+   */
+  enabled: boolean
+  /**
+   * The interval between which logs are accumulated before triggering the OnBotError hook.
+   * Set this value higher if the hook is triggered too often.
+   * @default 1m
+   */
+  interval: string
 }
 
 export interface EventCollectorConfig {
   /**
    * When enabled, incoming and outgoing events will be saved on the database.
-   * It is required for some modules to work proprely (eg: history, testing, developer tools on channel web)
+   * It is required for some modules to work properly (eg: history, testing, developer tools on channel web)
    * @default true
    */
   enabled: boolean
@@ -490,7 +678,7 @@ export interface EventCollectorConfig {
   retentionPeriod: string
   /**
    * Specify an array of event types that won't be persisted to the database. For example, typing events and visits
-   * may not provide you with useful informations
+   * may not provide you with useful information
    * @default ["visit","typing"]
    */
   ignoredEventTypes: string[]
@@ -500,4 +688,29 @@ export interface EventCollectorConfig {
    * @default []
    */
   ignoredEventProperties: string[]
+  /**
+   * These properties are only stored with the event when the user is logged on the studio
+   * @default ["ndu.triggers","ndu.predictions","nlu.predictions","state","processing","activeProcessing"]
+   */
+  debuggerProperties: string[]
+}
+
+interface ActionServersConfig {
+  local: {
+    /**
+     * Port on which the local Action Server listens
+     * @default 4000
+     */
+    port: number
+    /**
+     * Whether or not the enable the local Action Server
+     * @default true
+     */
+    enabled: boolean
+  }
+  /**
+   * The list of remote Action Servers
+   * @default []
+   */
+  remotes: ActionServer[]
 }

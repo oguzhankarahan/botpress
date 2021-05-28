@@ -1,7 +1,8 @@
-import { clickOn } from '../expectPuppeteer'
+import { clickOn, fillField, expectMatchElement } from '../expectPuppeteer'
 import {
   autoAnswerDialog,
   clickOnTreeNode,
+  CONFIRM_DIALOG,
   expectBotApiCallSuccess,
   gotoStudio,
   triggerKeyboardShortcut,
@@ -9,7 +10,7 @@ import {
 } from '../utils'
 
 const waitForFilesToLoad = async () =>
-  await page.waitForFunction(`document.querySelectorAll(".bp3-icon-document").length > 0`)
+  page.waitForFunction('document.querySelectorAll(".bp3-icon-document").length > 0')
 
 describe('Module - Code Editor', () => {
   beforeAll(async () => {
@@ -24,18 +25,20 @@ describe('Module - Code Editor', () => {
   })
 
   it('Create new action', async () => {
-    autoAnswerDialog('hello')
     await clickOn('#btn-add-action')
-    await clickOn('#btn-add-action-bot')
+    await fillField('#input-name', 'hello')
+    await clickOn('#btn-submit')
 
     await page.focus('#monaco-editor')
     await page.mouse.click(469, 297)
     await page.waitFor(500) // Required so the editor is correctly focused at the right place
-    await page.keyboard.type(`const lol = 'hi' //`)
+    await page.keyboard.type("const lol = 'hi' //")
 
-    await triggerKeyboardShortcut('KeyS', true)
-    await expectBotApiCallSuccess('mod/code-editor/save', 'POST')
-    await expectBotApiCallSuccess('mod/code-editor/files', 'GET')
+    await Promise.all([
+      expectBotApiCallSuccess('mod/code-editor/save', 'POST'),
+      expectBotApiCallSuccess('mod/code-editor/files', 'GET'),
+      triggerKeyboardShortcut('KeyS', true)
+    ])
   })
 
   it('Duplicate action', async () => {
@@ -51,20 +54,32 @@ describe('Module - Code Editor', () => {
     await clickOnTreeNode('hello_copy.js', 'right')
     await clickOn('#btn-disable')
 
-    await expectBotApiCallSuccess('mod/code-editor/rename', 'PUT')
+    await expectBotApiCallSuccess('mod/code-editor/rename', 'POST')
     const response = await waitForBotApiResponse('mod/code-editor/files')
-    const disabledFile = response.actionsBot.find(x => x.name === '.hello_copy.js')
+    const disabledFile = response['bot.actions'].find(x => x.name === '.hello_copy.js')
     expect(disabledFile).toBeDefined()
   })
 
   it('Delete file', async () => {
     await waitForFilesToLoad()
-    autoAnswerDialog()
     await clickOnTreeNode('.hello_copy.js', 'right')
     await clickOn('#btn-delete')
+    await clickOn(CONFIRM_DIALOG.ACCEPT)
 
     await expectBotApiCallSuccess('mod/code-editor/remove', 'POST')
     const response = await waitForBotApiResponse('mod/code-editor/files')
-    expect(response.actionsBot.find(x => x.name === '.hello_copy.js')).toBeUndefined()
+    expect(response['bot.actions'].find(x => x.name === '.hello_copy.js')).toBeUndefined()
+  })
+
+  it('Open two tabs', async () => {
+    await waitForFilesToLoad()
+
+    await clickOnTreeNode('builtin.json', 'left')
+    await expectBotApiCallSuccess('mod/code-editor/readFile', 'POST')
+    await expectMatchElement('div[id="builtin.json"]', { text: 'builtin.json' })
+
+    await clickOnTreeNode('channel-web.json', 'left')
+    await expectBotApiCallSuccess('mod/code-editor/readFile', 'POST')
+    await expectMatchElement('div[id="channel-web.json"]', { text: 'channel-web.json' })
   })
 })

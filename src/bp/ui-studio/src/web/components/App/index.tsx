@@ -1,17 +1,17 @@
-import { Component } from 'react'
+import axios from 'axios'
+import { TokenRefresher } from 'botpress/shared'
+import React, { Component, Fragment } from 'react'
 import { connect } from 'react-redux'
 import {
-  addNotifications,
   fetchBotInformation,
   fetchModules,
-  fetchNotifications,
   fetchSkills,
   fetchUser,
+  getModuleTranslations,
   handleReceiveFlowsModification,
-  refreshHints,
-  replaceNotifications
+  refreshHints
 } from '~/actions'
-import { authEvents } from '~/util/Auth'
+import { authEvents, setToken } from '~/util/Auth'
 import EventBus from '~/util/EventBus'
 
 import routes, { history } from '../Routes'
@@ -20,23 +20,23 @@ interface Props {
   fetchModules: () => void
   fetchSkills: () => void
   refreshHints: () => void
-  fetchNotifications: () => void
   fetchBotInformation: () => void
+  getModuleTranslations: () => void
   fetchUser: () => void
-  replaceNotifications: (notifications: any) => void
   handleReceiveFlowsModification: (modifications: any) => void
-  addNotifications: any
   user: any
 }
 
 class App extends Component<Props> {
   fetchData = () => {
+    this.props.getModuleTranslations()
+    this.props.fetchBotInformation()
     this.props.fetchModules()
     this.props.fetchSkills()
-    this.props.refreshHints()
-    this.props.fetchNotifications()
-    this.props.fetchBotInformation()
     this.props.fetchUser()
+    if (window.IS_BOT_MOUNTED) {
+      this.props.refreshHints()
+    }
   }
 
   // Prevents re-rendering the whole layout when the user changes. Fixes a bunch of warnings & double queries
@@ -49,6 +49,19 @@ class App extends Component<Props> {
     const botName = window.BOT_NAME ? ` – ${window.BOT_NAME}` : ''
     window.document.title = `${appName}${botName}`
 
+    if (window.APP_FAVICON) {
+      const link = document.querySelector('link[rel="icon"]')
+      link.setAttribute('href', window.APP_FAVICON)
+    }
+
+    if (window.APP_CUSTOM_CSS) {
+      const sheet = document.createElement('link')
+      sheet.rel = 'stylesheet'
+      sheet.href = window.APP_CUSTOM_CSS
+      sheet.type = 'text/css'
+      document.head.appendChild(sheet)
+    }
+
     EventBus.default.setup()
 
     // This acts as the app lifecycle management.
@@ -57,14 +70,6 @@ class App extends Component<Props> {
 
     authEvents.on('login', this.fetchData)
     authEvents.on('new_token', this.fetchData)
-
-    EventBus.default.on('notifications.all', notifications => {
-      this.props.replaceNotifications(notifications)
-    })
-
-    EventBus.default.on('notifications.new', notification => {
-      this.props.addNotifications([notification])
-    })
 
     EventBus.default.on('flow.changes', payload => {
       // TODO: should check if real uniq Id is different. Multiple browser windows can be using the same email. There should be a uniq window Id.
@@ -92,7 +97,12 @@ class App extends Component<Props> {
   }
 
   render() {
-    return routes()
+    return (
+      <Fragment>
+        <TokenRefresher getAxiosClient={() => axios} onRefreshCompleted={token => setToken(token)} />
+        {routes()}
+      </Fragment>
+    )
   }
 }
 
@@ -102,17 +112,12 @@ const mapDispatchToProps = {
   fetchModules,
   fetchSkills,
   refreshHints,
-  fetchNotifications,
-  replaceNotifications,
-  addNotifications,
-  handleReceiveFlowsModification
+  handleReceiveFlowsModification,
+  getModuleTranslations
 }
 
 const mapStateToProps = state => ({
   user: state.user
 })
 
-export default connect(
-  mapStateToProps,
-  mapDispatchToProps
-)(App)
+export default connect(mapStateToProps, mapDispatchToProps)(App)

@@ -6,26 +6,49 @@ export interface BPStorage {
   del: (key: string) => void
 }
 
+let storageDriver
+const getDriver = () => {
+  if (storageDriver) {
+    return storageDriver
+  }
+
+  try {
+    const storage =
+      window.USE_SESSION_STORAGE === true && typeof sessionStorage !== 'undefined' ? sessionStorage : localStorage
+
+    const tempKey = '__storage_test__'
+    storage.setItem(tempKey, tempKey)
+    storage.removeItem(tempKey)
+
+    return (storageDriver = storage)
+  } catch (e) {
+    return (storageDriver = 'cookie')
+  }
+}
+
 const storage: BPStorage = {
   set: (key: string, value: string) => {
     try {
-      localStorage ? localStorage.setItem(key, value) : Cookie.set(key, value)
+      const driver = getDriver()
+      driver !== 'cookie' ? driver.setItem(key, value) : Cookie.set(key, value)
     } catch (err) {
-      console.log('Error while getting data from storage.', err.message)
+      console.error('Error while getting data from storage.', err.message)
     }
   },
   get: (key: string) => {
     try {
-      return localStorage ? localStorage.getItem(key) : Cookie.get(key)
+      const driver = getDriver()
+      return driver !== 'cookie' ? driver.getItem(key) : Cookie.get(key)
     } catch (err) {
-      console.log('Error while getting data from storage.', err.message)
+      console.error('Error while getting data from storage.', err.message)
     }
   },
   del: (key: string) => {
     try {
-      localStorage ? localStorage.removeItem(key) : Cookie.remove(key)
+      const driver = getDriver()
+      driver !== 'cookie' ? driver.removeItem(key) : Cookie.remove(key)
     } catch (err) {
-      console.log('Error while deleting data from storage.', err.message)
+      console.error('Error while deleting data from storage.', err.message)
     }
   }
 }

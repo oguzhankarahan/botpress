@@ -1,18 +1,21 @@
 import classnames from 'classnames'
+import sortBy from 'lodash/sortBy'
 import { inject } from 'mobx-react'
 import React from 'react'
 
 import { RootStore, StoreDef } from '../../store'
 import { Message as MessageDetails } from '../../typings'
 
+import { InlineFeedback } from './InlineFeedback'
 import Message from './Message'
 
 class MessageGroup extends React.Component<Props> {
   state = {
-    hasError: false
+    hasError: false,
+    audioPlayingIndex: 0
   }
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(_error: Error) {
     return { hasError: true }
   }
 
@@ -25,7 +28,7 @@ class MessageGroup extends React.Component<Props> {
   convertPayloadFromOldFormat = data => {
     let payload = data.payload || data.message_data || data.message_raw || { text: data.message_text }
     if (!payload.type) {
-      payload.type = data.message_type || (data.message_data && data.message_data.type) || 'text'
+      payload.type = data.message_type || data.message_data?.type || 'text'
     }
 
     // Keeping compatibility with old schema for the quick reply
@@ -34,7 +37,7 @@ class MessageGroup extends React.Component<Props> {
     }
 
     if (data.message_type === 'file' && !payload.url) {
-      payload.url = (data.message_data && data.message_data.url) || (data.message_raw && data.message_raw.url)
+      payload.url = data.message_data?.url || data.message_raw?.url
     }
 
     if (this.props.messageWrapper && payload.type !== 'session_reset') {
@@ -49,39 +52,78 @@ class MessageGroup extends React.Component<Props> {
     return payload
   }
 
+  onAudioEnded = () => {
+    if (this.state.audioPlayingIndex >= this.props.messages.length - 1) {
+      this.state.audioPlayingIndex = -1
+    } else {
+      this.setState({ ...this.state, audioPlayingIndex: this.state.audioPlayingIndex += 1 })
+    }
+  }
+
   render() {
+    const { messages, avatar, isBot, showUserName, userName } = this.props
+
+    const fromLabel = this.props.store.intl.formatMessage({
+      id: this.props.isBot ? 'message.fromBotLabel' : 'message.fromMeLabel',
+      defaultMessage: 'Me'
+    })
+
     if (this.state.hasError) {
       return '* Cannot display message *'
     }
 
     return (
       <div
+        role="main"
         className={classnames('bpw-message-big-container', {
-          'bpw-from-user': !this.props.isBot,
-          'bpw-from-bot': this.props.isBot
+          'bpw-from-user': !isBot,
+          'bpw-from-bot': isBot
         })}
       >
-        {this.props.avatar}
-        <div className={'bpw-message-container'}>
-          {this.props.showUserName && <div className={'bpw-message-username'}>{this.props.userName}</div>}
-          <div className={'bpw-message-group'}>
-            {this.props.messages.map((data, i) => {
+        {avatar}
+        <div role="region" className={'bpw-message-container'}>
+          {showUserName && <div className={'bpw-message-username'}>{userName}</div>}
+          <div aria-live="assertive" role="log" className={'bpw-message-group'}>
+            <span data-from={fromLabel} className="from hidden" aria-hidden="true">
+              {fromLabel}
+            </span>
+            {sortBy(messages, 'eventId').map((message, i, messages) => {
+              const isLastMsg = i === messages.length - 1
+              const payload = this.convertPayloadFromOldFormat(message)
+
+              const showInlineFeedback =
+                isBot && isLastMsg && (payload.wrapped ? payload.wrapped.collectFeedback : payload.collectFeedback)
+
               return (
                 <Message
-                  key={`msg-${i}`}
+                  key={message.eventId}
                   isHighlighted={
-                    this.props.highlightedMessages && this.props.highlightedMessages.includes(data.incomingEventId)
+                    this.props.highlightedMessages && this.props.highlightedMessages.includes(message.incomingEventId)
                   }
+                  inlineFeedback={
+                    showInlineFeedback && (
+                      <InlineFeedback
+                        intl={this.props.store.intl}
+                        incomingEventId={message.incomingEventId}
+                        onFeedback={this.props.onFeedback}
+                        eventFeedbacks={this.props.store.eventFeedbacks}
+                      />
+                    )
+                  }
+                  noBubble={!!payload.noBubble}
+                  fromLabel={fromLabel}
                   isLastOfGroup={i >= this.props.messages.length - 1}
                   isLastGroup={this.props.isLastGroup}
-                  isBotMessage={!data.userId}
-                  incomingEventId={data.incomingEventId}
-                  payload={this.convertPayloadFromOldFormat(data)}
-                  sentOn={data.sent_on}
+                  isBotMessage={!message.userId}
+                  incomingEventId={message.incomingEventId}
+                  payload={payload}
+                  sentOn={message.sent_on}
                   onSendData={this.props.onSendData}
                   onFileUpload={this.props.onFileUpload}
                   bp={this.props.bp}
                   store={this.props.store}
+                  onAudioEnded={this.onAudioEnded}
+                  shouldPlay={this.state.audioPlayingIndex === i}
                 />
               )
             })}
@@ -95,6 +137,7 @@ class MessageGroup extends React.Component<Props> {
 export default inject(({ store }: { store: RootStore }) => ({
   store,
   bp: store.bp,
+  onFeedback: store.sendFeedback,
   onSendData: store.sendData,
   onFileUpload: store.uploadFile,
   messageWrapper: store.messageWrapper,
@@ -110,6 +153,7 @@ type Props = {
   isLastGroup: boolean
   onFileUpload?: any
   onSendData?: any
+  onFeedback?: any
   store?: RootStore
   highlightedMessages?: string[]
 } & Pick<StoreDef, 'showUserName' | 'messageWrapper' | 'bp'>

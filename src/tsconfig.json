@@ -6,8 +6,7 @@
     "module": "commonjs",
     "esModuleInterop": true,
     "resolveJsonModule": true,
-    "target": "es6",
-    "lib": ["es7"],
+    "target": "es2019",
     "noImplicitAny": false,
     "moduleResolution": "node",
     "experimentalDecorators": true,
@@ -15,7 +14,7 @@
     "baseUrl": "./bp",
     "outDir": "../out",
     "typeRoots": ["./typings", "../node_modules/@types", "./bp/common"],
-    "types": ["reflect-metadata", "jest", "bluebird-global"]
+    "types": ["reflect-metadata", "jest"]
   },
   "exclude": [
     "e2e/**",
@@ -23,8 +22,9 @@
     "../out",
     "**/node_modules/**/*.(ts|js)",
     "**/static/**/*.(js|ts)",
-    "**/ml/svm-js/**/*.*",
-    "**/ui-admin/**/*",
+    "**/ui-shared/**/*",
+    "bp/admin/ui/**/*",
+    "bp/ui-lite/**/*",
     "bp/ui-studio/**"
   ]
 }

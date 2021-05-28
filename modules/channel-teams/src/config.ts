@@ -20,4 +20,19 @@ export interface Config {
    * The tenant ID (if supported account type is a specific organization)
    */
   tenantId?: string
+
+  /**
+   * The duration of the authentication session when a user authenticate through this channel.
+   * @default 24h
+   */
+  chatUserAuthDuration: string
+
+  /**
+   * @param proactiveMessages The proactive message sent to a user that communicates with the bot for the first time
+   * @example { "en": "proactive message", "fr": "message proactif" }
+   * @default {}
+   */
+  proactiveMessages: {
+    [Key: string]: string
+  }
 }

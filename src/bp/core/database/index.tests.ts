@@ -1,8 +1,8 @@
 import 'bluebird-global'
 import 'reflect-metadata'
+import { PersistedConsoleLogger } from 'core/logger'
 import tmp from 'tmp'
 
-import { PersistedConsoleLogger } from '../logger'
 import { createSpyObject, MockObject } from '../misc/utils'
 
 import Database from '.'
@@ -11,7 +11,7 @@ const TEST_DATABASE = 'botpress_tests'
 
 const logger: MockObject<PersistedConsoleLogger> = createSpyObject<PersistedConsoleLogger>()
 
-export type DatabaseTestSuite = ((database: Database) => void)
+export type DatabaseTestSuite = (database: Database) => void
 
 export function createDatabaseSuite(suiteName: string, suite: DatabaseTestSuite) {
   const sqlitePath = tmp.fileSync().name

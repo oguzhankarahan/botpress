@@ -7,6 +7,22 @@
   color: red;
 }
 
+.tableWrapper {
+  padding: 5px;
+}
+
+.contentListWrapper {
+  height: calc(100% - 36px);
+
+  :global(.ReactTable) {
+    height: 100% !important;
+  }
+
+  :global(.ReactTable .rt-tbody) {
+    overflow: initial !important;
+  }
+}
+
 .modal {
   .cancel {
     position: absolute;
@@ -27,4 +43,12 @@
       border-color: #40bd94;
     }
   }
+}
+
+.imagePreview {
+  height: 16px;
+}
+
+.centered {
+  text-align: center;
 }

@@ -1,13 +1,7 @@
 import path from 'path'
 
 import { clickOn, expectMatch, expectMatchElement, fillField, uploadFile } from '../expectPuppeteer'
-import {
-  autoAnswerDialog,
-  expectBotApiCallSuccess,
-  getElementCenter,
-  gotoStudio,
-  waitForBotApiResponse
-} from '../utils'
+import { CONFIRM_DIALOG, expectBotApiCallSuccess, getElementCenter, gotoStudio, waitForBotApiResponse } from '../utils'
 
 const getQnaCount = async (): Promise<number> => (await page.$$('div[role="entry"]')).length
 
@@ -24,11 +18,16 @@ describe('Module - QNA', () => {
   })
 
   it('Filter by category', async () => {
-    await fillField('#select-category', 'monkey')
-    await page.keyboard.press('Enter')
-    await expectBotApiCallSuccess('mod/qna/questions?question=&categories[]=monkeys', 'GET')
-    await expect(await getQnaCount()).toBe(2)
+    await fillField('#select-context', 'monkeys')
+
+    await Promise.all([
+      expectBotApiCallSuccess('mod/qna/questions?question=&filteredContexts[]=monkeys', 'GET'),
+      page.keyboard.press('Enter')
+    ])
+
+    expect(await getQnaCount()).toBe(2)
     await page.keyboard.press('Delete')
+    await clickOn("[class^='bp3-tag-remove']")
   })
 
   it('Create new entry', async () => {
@@ -45,33 +44,39 @@ describe('Module - QNA', () => {
 
   it('Filter by name', async () => {
     await page.waitFor(300) // Required because the create action clears the filter after it loads new qna
-    await fillField('#input-search', 'are you working')
-    await expectBotApiCallSuccess('mod/qna/questions', 'GET')
-    await expect(await getQnaCount()).toBe(1)
+    await Promise.all([
+      expectBotApiCallSuccess('mod/qna/questions', 'GET'),
+      fillField('#input-search', 'are you working')
+    ])
+    expect(await getQnaCount()).toBe(1)
   })
 
   it('Delete entry', async () => {
-    autoAnswerDialog()
+    await page.waitFor(500)
     const element = await expectMatchElement('div[role="entry"]', { text: 'are you working' })
     const { x, y } = await getElementCenter(element)
     await page.mouse.move(x, y) // This makes the delete icon visible for the next step
 
-    await clickOn('.icon-delete')
-    await expectBotApiCallSuccess('mod/qna/questions')
+    await clickOn('.bp3-icon-trash')
+    await clickOn(CONFIRM_DIALOG.ACCEPT)
+    await expectBotApiCallSuccess('mod/qna/questions', 'POST')
   })
 
   it('Export to JSON', async () => {
     await clickOn('#btn-export')
     const response = await waitForBotApiResponse('mod/qna/export')
     expect(response).toBeDefined()
-    expect(response.length).toBeGreaterThan(0)
+    expect(response.qnas.length).toBeGreaterThan(0)
   })
 
   it('Import from JSON', async () => {
-    await clickOn('#btn-import')
-    await uploadFile('#input-file', path.join(__dirname, '../assets/qna_22-08-2019.json'))
-    await clickOn('#chk-replace')
-    await clickOn('#btn-upload')
+    await clickOn('#btn-importJson')
+    await uploadFile('input[type="file"]', path.join(__dirname, '../assets/qna_22-08-2019.json'))
+    await clickOn('#btn-next')
+    await expectBotApiCallSuccess('mod/qna/analyzeImport', 'POST')
+
+    await clickOn('#radio-clearInsert')
+    await clickOn('#btn-submit')
     await expectBotApiCallSuccess('mod/qna/import', 'POST')
     await expectBotApiCallSuccess('mod/qna/questions', 'GET')
     await page.focus('body') // Sets back the focus to the page when the modal is closed

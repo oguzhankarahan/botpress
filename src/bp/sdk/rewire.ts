@@ -9,7 +9,7 @@ const platformFolders: string[] = []
 const nativeBindingsPaths: string[] = []
 
 const nativeExBaseFolder =
-  (process.core_env.NATIVE_EXTENSIONS_DIR && syspath.resolve(process.core_env.NATIVE_EXTENSIONS_DIR)) ||
+  (process.core_env.NATIVE_EXTENSIONS_DIR && syspath.resolve(process.env.NATIVE_EXTENSIONS_DIR!)) ||
   (process.pkg
     ? syspath.resolve(syspath.dirname(process.execPath), 'bindings')
     : syspath.resolve(process.PROJECT_LOCATION, '../../build/native-extensions'))
@@ -48,21 +48,14 @@ for (const folder of platformFolders) {
   nativeBindingsPaths.push(syspath.resolve(nativeExBaseFolder, folder))
 }
 
-const nativeExtensions = [
-  'node_sqlite3.node',
-  'fse.node',
-  'crfsuite.node',
-  'fasttext.node',
-  'node-svm.node',
-  'sentencepiece.node'
-]
+const nativeExtensions = ['node_sqlite3.node', 'fse.node']
 
 function addToNodePath(path) {
   overwritePaths(getPaths().concat(path))
 }
 
 function reloadPaths() {
-  ;(Module as any)._initPaths() // tslint:disable-line
+  ;(Module as any)._initPaths() // eslint-disable-line
 }
 
 function getPaths(): string[] {
@@ -88,7 +81,7 @@ addToNodePath(syspath.resolve(__dirname, '../')) // 'bp/' directory
 
 const rewire = function(this: NodeRequireFunction, mod: string) {
   if (mod === 'botpress/sdk') {
-    return originalRequire.apply(this, ['core/sdk_impl'])
+    return originalRequire.apply(this, ['core/app/sdk_impl'])
   }
 
   if (mod.endsWith('.node')) {
@@ -172,7 +165,7 @@ if (global.process.env.BP_DEBUG_REQUIRE) {
   setInterval(() => {
     const significantCalls = _.take(_.orderBy(allRequires, 'duration', 'desc'), TOP_COUNT)
     const formattedCalls = significantCalls.map((x, i) => `${i}) ${x.duration}\t\t${x.call}`).join(os.EOL)
-    console.log(formattedCalls)
+    console.info(formattedCalls)
     allRequires = []
   }, SAMPLING_INTERVAL)
 }

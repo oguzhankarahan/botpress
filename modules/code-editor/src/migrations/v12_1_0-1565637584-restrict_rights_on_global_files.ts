@@ -2,8 +2,8 @@ import * as sdk from 'botpress/sdk'
 import _ from 'lodash'
 
 const isMigrationAlreadyDone = (rules: any[]) => {
-  const ressources: string[] = rules.map(r => r.res)
-  const alreadySpecifiedPermission = ressources.find(r => r.startsWith('module.code-editor.global'))
+  const resources: string[] = rules.map(r => r.res)
+  const alreadySpecifiedPermission = resources.find(r => r.startsWith('module.code-editor.global'))
   return !!alreadySpecifiedPermission
 }
 
@@ -21,7 +21,7 @@ const migration: sdk.ModuleMigration = {
     if (await ghost.fileExists('config', 'code-editor.json')) {
       const currentConfig = await ghost.readFileAsObject<any>('config', 'code-editor.json')
       const newConfig = _.omit(currentConfig, 'allowGlobal', 'includeBotConfig')
-      await ghost.upsertFile('config', 'code-editor.json', JSON.stringify(newConfig, null, 2))
+      await ghost.upsertFile('config', 'code-editor.json', JSON.stringify(newConfig, undefined, 2))
       const { allowGlobal, includeBotConfig } = currentConfig
       enableGlobal = !!allowGlobal
       enableConfig = !!includeBotConfig
@@ -53,7 +53,7 @@ const migration: sdk.ModuleMigration = {
 
         for (const role of roles) {
           if (isMigrationAlreadyDone(role.rules)) {
-            return { success: true, message: 'no-need for migration' }
+            return { success: true, message: 'Rules are already updated, skipping...' }
           }
           role.rules.push(...newRules)
         }

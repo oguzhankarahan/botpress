@@ -1,10 +1,11 @@
 import React from 'react'
 
-import Message from '../lite/components/messages/Message'
 import * as Keyboard from '../lite/components/Keyboard'
+import Message from '../lite/components/messages/Message'
 
 const INJECTION_ID = 'bp-channel-web-injection'
-const INJECTION_URL = `assets/modules/channel-web/inject.js`
+const INJECTION_URL = 'assets/modules/channel-web/inject.js'
+const EMULATOR_WIDTH = 300
 
 export class WebBotpressUIInjection extends React.Component {
   componentDidMount() {
@@ -18,6 +19,7 @@ export class WebBotpressUIInjection extends React.Component {
     script.onload = () =>
       window.botpressWebChat.init({
         hideWidget: true,
+        isEmulator: true,
         botName: 'Bot Emulator',
         botConvoDescription: 'Test your bot live',
         enableReset: true,
@@ -26,8 +28,12 @@ export class WebBotpressUIInjection extends React.Component {
         userIdScope: 'studio',
         sendUsageStats: window.SEND_USAGE_STATS,
         disableAnimations: true,
+        useSessionStorage: false,
         showPoweredBy: false,
         enableResetSessionShortcut: true,
+        enableConversationDeletion: true,
+        containerWidth: EMULATOR_WIDTH,
+        layoutWidth: EMULATOR_WIDTH,
         overrides: {
           before_container: [
             {

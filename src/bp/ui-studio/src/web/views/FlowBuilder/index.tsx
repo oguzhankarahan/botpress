@@ -1,225 +1,216 @@
-import { Intent, Position, Toaster } from '@blueprintjs/core'
+import { lang, MainContainer, utils } from 'botpress/shared'
 import { FlowView } from 'common/typings'
 import _ from 'lodash'
-import React, { Component } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { connect } from 'react-redux'
 import { RouteComponentProps, withRouter } from 'react-router-dom'
-import { clearErrorSaveFlows, flowEditorRedo, flowEditorUndo, setDiagramAction, switchFlow } from '~/actions'
-import { operationAllowed } from '~/components/Layout/PermissionsChecker'
-import { Container } from '~/components/Shared/Interface'
+import {
+  clearErrorSaveFlows,
+  closeFlowNodeProps,
+  flowEditorRedo,
+  flowEditorUndo,
+  refreshActions,
+  refreshConditions,
+  refreshIntents,
+  setDiagramAction,
+  switchFlow
+} from '~/actions'
+import { Timeout, toastFailure, toastInfo } from '~/components/Shared/Utils'
+import { isOperationAllowed } from '~/components/Shared/Utils/AccessControl'
 import DocumentationProvider from '~/components/Util/DocumentationProvider'
-import { getDirtyFlows, RootReducer } from '~/reducers'
-import { UserReducer } from '~/reducers/user'
+import { RootReducer } from '~/reducers'
 
-import Diagram from './containers/Diagram'
-import NodeProps from './containers/NodeProps'
-import SidePanel from './containers/SidePanel'
-import SkillsBuilder from './containers/SkillsBuilder'
-import { PannelPermissions } from './sidePanel'
-import { MutexInfo } from './sidePanel/Toolbar'
+import SidePanelOneFlow from '../FlowBuilder/sidePanelTopics'
+
+import Diagram from './diagram'
+import SidePanel, { PanelPermissions, SidePanelInspector } from './sidePanelFlows'
+import SkillsBuilder from './skills'
 import style from './style.scss'
 
-const toastMutex: _.Dictionary<boolean> = {}
-
-const FlowToaster = Toaster.create({
-  position: Position.TOP
-})
-
-class FlowBuilder extends Component<Props, State> {
-  private diagram
-  private userAllowed = false
-
-  state = {
-    initialized: false,
-    readOnly: false,
-    pannelPermissions: this.allPermissions,
-    flowPreview: false,
-    mutexInfo: undefined
-  }
-
-  get allPermissions(): PannelPermissions[] {
-    return ['create', 'rename', 'delete']
-  }
-
-  init() {
-    if (this.state.initialized || !this.props.user || this.props.user.email == null) {
-      return
-    }
-    this.userAllowed = operationAllowed({ user: this.props.user, op: 'write', res: 'bot.flows' })
-    this.setState({
-      initialized: true
-    })
-    if (!this.userAllowed) {
-      this.freezeAll()
-    }
-  }
-
-  freezeAll() {
-    this.setState({
-      readOnly: true,
-      pannelPermissions: []
-    })
-  }
-
-  componentDidMount() {
-    this.init()
-  }
-
-  componentDidUpdate(prevProps: Props) {
-    this.init()
-
-    const { flow } = this.props.match.params as any
-    const nextRouteFlow = `${flow}.flow.json`
-
-    if (prevProps.currentFlow !== this.props.currentFlow) {
-      this.pushFlowState(this.props.currentFlow)
-    } else if (flow && prevProps.currentFlow !== nextRouteFlow) {
-      this.props.switchFlow(nextRouteFlow)
-    }
-
-    if (!prevProps.errorSavingFlows && this.props.errorSavingFlows) {
-      const { status } = this.props.errorSavingFlows
-      const message =
-        status === 403
-          ? 'Unauthorized flow update. You have insufficient role privileges to modify flows.'
-          : 'There was an error while saving, deleting or renaming a flow. Last modification might not have been saved on server. Please reload page before continuing flow edition'
-      toast(message, Intent.DANGER, 0, this.props.clearErrorSaveFlows)
-    }
-
-    const flowsHaveChanged = !_.isEqual(prevProps.flowsByName, this.props.flowsByName)
-    const currentFlowHasSwitched = prevProps.currentFlow !== this.props.currentFlow
-    if (flowsHaveChanged || currentFlowHasSwitched) {
-      this.handleFlowFreezing()
-    }
-  }
-
-  handleFlowFreezing() {
-    if (!this.userAllowed) {
-      this.freezeAll()
-    }
-
-    const me = this.props.user.email
-
-    const currentFlow = this.props.flowsByName[this.props.currentFlow]
-    const { currentMutex } = (currentFlow || {}) as FlowView
-
-    if (currentMutex && currentMutex.lastModifiedBy !== me && currentMutex.remainingSeconds) {
-      this.setState({
-        readOnly: true,
-        pannelPermissions: ['create'],
-        mutexInfo: { currentMutex }
-      })
-      return
-    }
-
-    const someoneElseIsEditingOtherFlow = _.values(this.props.flowsByName).some(
-      f => f.currentMutex && f.currentMutex.lastModifiedBy !== me && !!f.currentMutex.remainingSeconds
-    )
-
-    if (someoneElseIsEditingOtherFlow) {
-      this.setState({
-        readOnly: false,
-        pannelPermissions: ['create'],
-        mutexInfo: { someoneElseIsEditingOtherFlow: true }
-      })
-      return
-    }
-
-    this.setState({
-      readOnly: false,
-      pannelPermissions: this.allPermissions,
-      mutexInfo: undefined
-    })
-  }
-
-  pushFlowState = flow => {
-    this.props.history.push(`/flows/${flow.replace(/\.flow\.json/, '')}`)
-  }
-
-  render() {
-    if (!this.state.initialized) {
-      return null
-    }
-
-    const { readOnly, pannelPermissions } = this.state
-
-    const keyHandlers = {
-      add: e => {
-        e.preventDefault()
-        this.props.setDiagramAction('insert_node')
-      },
-      undo: e => {
-        e.preventDefault()
-        this.props.flowEditorUndo()
-      },
-      redo: e => {
-        e.preventDefault()
-        this.props.flowEditorRedo()
-      },
-      'preview-flow': e => {
-        e.preventDefault()
-        this.setState({ flowPreview: true })
-      },
-      save: e => {
-        e.preventDefault()
-        toast('Pssst! Flows now save automatically, no need to save anymore.', Intent.PRIMARY, 700)
-      }
-    }
-
-    return (
-      <Container keyHandlers={keyHandlers}>
-        <SidePanel
-          mutexInfo={this.state.mutexInfo}
-          permissions={pannelPermissions}
-          flowPreview={this.state.flowPreview}
-          onCreateFlow={name => {
-            this.diagram.createFlow(name)
-            this.props.switchFlow(`${name}.flow.json`)
-          }}
-        />
-        <div className={style.diagram}>
-          <Diagram
-            readOnly={readOnly}
-            flowPreview={this.state.flowPreview}
-            ref={el => {
-              if (!!el) {
-                // @ts-ignore
-                this.diagram = el.getWrappedInstance()
-              }
-            }}
-          />
-        </div>
-
-        <DocumentationProvider file="flows" />
-        <SkillsBuilder />
-        <NodeProps readOnly={readOnly} show={this.props.showFlowNodeProps} />
-      </Container>
-    )
-  }
+interface OwnProps {
+  currentMutex: any
 }
 
-const toast = (message: string, intent: Intent, timeout: number, onDismissCb?: () => void) => {
-  if (toastMutex[message]) {
-    return
+type StateProps = ReturnType<typeof mapStateToProps>
+type DispatchProps = typeof mapDispatchToProps
+type Props = DispatchProps & StateProps & OwnProps & RouteComponentProps
+
+const allActions: PanelPermissions[] = ['create', 'rename', 'delete']
+const searchTag = '#search:'
+
+const FlowBuilder = (props: Props) => {
+  const { flow } = props.match.params as any
+
+  const diagram: any = useRef(null)
+  const [showSearch, setShowSearch] = useState(false)
+  const [readOnly, setReadOnly] = useState(false)
+  const [mutex, setMutex] = useState<any>()
+  const [actions, setActions] = useState(allActions)
+  const [highlightFilter, setHighlightFilter] = useState<string>()
+
+  useEffect(() => {
+    props.refreshActions()
+    props.refreshIntents()
+
+    if (window.USE_ONEFLOW) {
+      props.refreshConditions()
+    }
+
+    if (!isOperationAllowed({ operation: 'write', resource: 'bot.flows' })) {
+      setReadOnly(true)
+      setActions([])
+    }
+
+    const { hash } = props.location
+    setHighlightFilter(hash.startsWith(searchTag) ? hash.replace(searchTag, '') : '')
+  }, [])
+
+  useEffect(() => {
+    props.currentFlow && pushFlowState(props.currentFlow)
+    utils.inspect(props.flowsByName[props.currentFlow])
+  }, [props.currentFlow])
+
+  useEffect(() => {
+    const nextRouteFlow = `${flow}.flow.json`
+    if (flow && props.currentFlow !== nextRouteFlow) {
+      props.switchFlow(nextRouteFlow)
+    }
+  }, [flow])
+
+  useEffect(() => {
+    if (props.errorSavingFlows) {
+      const { status } = props.errorSavingFlows
+      const message = status === 403 ? lang.tr('studio.unauthUpdate') : lang.tr('studio.errorWhileSaving')
+      toastFailure(message, Timeout.LONG, props.clearErrorSaveFlows, { delayed: true })
+    }
+  }, [props.errorSavingFlows])
+
+  useEffect(() => {
+    const me = props.user.email
+
+    const currentFlow = props.flowsByName[props.currentFlow]
+    const { currentMutex } = (currentFlow || {}) as FlowView
+
+    if (currentMutex?.remainingSeconds && currentMutex.lastModifiedBy !== me) {
+      setReadOnly(true)
+      setActions(['create'])
+      setMutex({ currentMutex })
+      return
+    }
+
+    const someoneElseIsEditingOtherFlow = _.values(props.flowsByName).some(
+      f => f.currentMutex?.remainingSeconds && f.currentMutex.lastModifiedBy !== me
+    )
+
+    if (isOperationAllowed({ operation: 'write', resource: 'bot.flows' })) {
+      setReadOnly(false)
+      setMutex(undefined)
+    }
+
+    if (someoneElseIsEditingOtherFlow) {
+      setActions(['create'])
+      setMutex({ someoneElseIsEditingOtherFlow: true })
+    } else {
+      setActions(allActions)
+    }
+  }, [props.flowsByName, props.currentFlow])
+
+  const pushFlowState = flow => props.history.push(`/flows/${flow.replace(/\.flow\.json/i, '')}`)
+
+  const keyHandlers = {
+    add: e => {
+      e.preventDefault()
+      props.setDiagramAction('insert_node')
+    },
+    undo: e => {
+      e.preventDefault()
+      props.flowEditorUndo()
+    },
+    redo: e => {
+      e.preventDefault()
+      props.flowEditorRedo()
+    },
+    find: e => {
+      e.preventDefault()
+      setShowSearch(!showSearch)
+    },
+    save: e => {
+      e.preventDefault()
+      toastInfo(lang.tr('studio.nowSaveAuto'), Timeout.LONG)
+    },
+    delete: e => {
+      if (!utils.isInputFocused()) {
+        e.preventDefault()
+        diagram?.deleteSelectedElements()
+      }
+    },
+    cancel: e => {
+      e.preventDefault()
+      props.closeFlowNodeProps()
+      setShowSearch(false)
+    }
   }
 
-  toastMutex[message] = true
-  FlowToaster.show({
-    message,
-    intent,
-    timeout,
-    onDismiss: () => {
-      toastMutex[message] = false
-      onDismissCb && onDismissCb()
-    }
-  })
+  const handleFilterChanged = ({ target: { value: highlightFilter } }) => {
+    const newUrl = props.location.pathname + searchTag + highlightFilter
+    setHighlightFilter(highlightFilter)
+    props.history.replace(newUrl)
+  }
+
+  const createFlow = name => {
+    diagram.createFlow(name)
+    props.switchFlow(`${name}.flow.json`)
+  }
+
+  return (
+    <MainContainer keyHandlers={keyHandlers}>
+      {window.USE_ONEFLOW ? (
+        <SidePanelOneFlow
+          onDeleteSelectedElements={() => diagram?.deleteSelectedElements()}
+          readOnly={readOnly}
+          mutexInfo={mutex}
+          permissions={actions}
+          onCreateFlow={createFlow}
+        />
+      ) : (
+        <SidePanel
+          onDeleteSelectedElements={() => diagram?.deleteSelectedElements()}
+          readOnly={readOnly}
+          mutexInfo={mutex}
+          permissions={actions}
+          onCreateFlow={createFlow}
+        />
+      )}
+
+      {!window.USE_ONEFLOW && <SidePanelInspector />}
+
+      <div className={style.diagram}>
+        <Diagram
+          readOnly={readOnly}
+          showSearch={showSearch}
+          hideSearch={() => setShowSearch(false)}
+          handleFilterChanged={handleFilterChanged}
+          highlightFilter={highlightFilter}
+          mutexInfo={mutex}
+          ref={el => {
+            if (!!el) {
+              // @ts-ignore
+              diagram = el.getWrappedInstance()
+            }
+          }}
+        />
+      </div>
+
+      <DocumentationProvider file="flows" />
+      <SkillsBuilder />
+    </MainContainer>
+  )
 }
 
 const mapStateToProps = (state: RootReducer) => ({
   currentFlow: state.flows.currentFlow,
   flowsByName: state.flows.flowsByName,
   showFlowNodeProps: state.flows.showFlowNodeProps,
-  dirtyFlows: getDirtyFlows(state),
   user: state.user,
   errorSavingFlows: state.flows.errorSavingFlows
 })
@@ -229,33 +220,14 @@ const mapDispatchToProps = {
   setDiagramAction,
   flowEditorUndo,
   flowEditorRedo,
-  clearErrorSaveFlows
+  clearErrorSaveFlows,
+  closeFlowNodeProps,
+  refreshActions,
+  refreshIntents,
+  refreshConditions
 }
 
-export default connect(
+export default connect<StateProps, DispatchProps, OwnProps>(
   mapStateToProps,
   mapDispatchToProps
 )(withRouter(FlowBuilder))
-
-type Props = {
-  currentFlow: string
-  showFlowNodeProps: boolean
-  dirtyFlows: string[]
-  user: UserReducer
-  setDiagramAction: any
-  switchFlow: any
-  flowEditorUndo: any
-  flowEditorRedo: any
-  errorSavingFlows: any
-  clearErrorSaveFlows: () => void
-  clearFlowsModification: () => void
-  flowsByName: _.Dictionary<FlowView>
-} & RouteComponentProps
-
-interface State {
-  initialized: any
-  readOnly: boolean
-  pannelPermissions: PannelPermissions[]
-  flowPreview: boolean
-  mutexInfo: MutexInfo
-}

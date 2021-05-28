@@ -1,28 +1,29 @@
 import * as sdk from 'botpress/sdk'
+import { asyncMiddleware as asyncMw } from 'common/http'
+import { Request, Response } from 'express'
 import { validate } from 'joi'
 import _ from 'lodash'
 import moment from 'moment'
 import multer from 'multer'
 import nanoid from 'nanoid'
-import yn from 'yn'
+import { QnaEntry, ScopedBots } from './qna'
+import { importQuestions, prepareExport, prepareImport } from './transfer'
+import { getIntentActions } from './utils'
+import { QnaDefSchema } from './validation'
 
-import { QnaEntry, QnaItem } from './qna'
-import Storage from './storage'
-import { importQuestions, prepareExport } from './transfer'
-import { QnaDefSchema, QnaItemArraySchema } from './validation'
-
-export default async (bp: typeof sdk, botScopedStorage: Map<string, Storage>) => {
+export default async (bp: typeof sdk, bots: ScopedBots) => {
   const jsonUploadStatuses = {}
+  const asyncMiddleware = asyncMw(bp.logger)
   const router = bp.http.createRouterForBot('qna')
 
-  router.get('/questions', async (req, res) => {
+  router.get('/questions', async (req: Request, res: Response) => {
     try {
       const {
-        query: { question = '', categories = [], limit, offset }
+        query: { question = '', filteredContexts = [], limit, offset }
       } = req
 
-      const storage = botScopedStorage.get(req.params.botId)
-      const items = await storage.getQuestions({ question, categories }, { limit, offset })
+      const { storage } = bots[req.params.botId]
+      const items = await storage.getQuestions({ question, filteredContexts }, { limit, offset })
       res.send({ ...items })
     } catch (e) {
       bp.logger.attachError(e).error('Error listing questions')
@@ -30,116 +31,168 @@ export default async (bp: typeof sdk, botScopedStorage: Map<string, Storage>) =>
     }
   })
 
-  router.post('/questions', async (req, res, next) => {
+  router.post('/questions', async (req: Request, res: Response, next: Function) => {
     try {
       const qnaEntry = (await validate(req.body, QnaDefSchema)) as QnaEntry
-      const storage = botScopedStorage.get(req.params.botId)
+      const { storage } = bots[req.params.botId]
       const id = await storage.insert(qnaEntry)
-      res.send(id)
+      res.send([id])
     } catch (e) {
       next(new Error(e.message))
     }
   })
 
-  router.get('/questions/:id', async (req, res) => {
+  router.get('/questions/:id', async (req: Request, res: Response) => {
     try {
-      const storage = botScopedStorage.get(req.params.botId)
+      const { storage } = bots[req.params.botId]
       const question = await storage.getQnaItem(req.params.id)
       res.send(question)
     } catch (e) {
-      sendToastError('Fetch', e.message)
+      res.status(404).send(e.message || 'Error')
     }
   })
 
-  router.put('/questions/:id', async (req, res, next) => {
+  router.post('/questions/:id', async (req: Request, res: Response, next: Function) => {
     const {
-      query: { limit, offset, question, categories }
+      query: { limit, offset, question, filteredContexts }
     } = req
 
     try {
       const qnaEntry = (await validate(req.body, QnaDefSchema)) as QnaEntry
-      const storage = botScopedStorage.get(req.params.botId)
+      const { storage } = bots[req.params.botId]
       await storage.update(qnaEntry, req.params.id)
 
-      const questions = await storage.getQuestions({ question, categories }, { limit, offset })
+      const questions = await storage.getQuestions({ question, filteredContexts }, { limit, offset })
       res.send(questions)
     } catch (e) {
       next(new Error(e.message))
     }
   })
 
-  router.delete('/questions/:id', async (req, res) => {
+  router.post('/questions/:id/delete', async (req: Request, res: Response) => {
     const {
-      query: { limit, offset, question, categories }
+      query: { limit, offset, question, filteredContexts }
     } = req
 
     try {
-      const storage = botScopedStorage.get(req.params.botId)
+      const { storage } = bots[req.params.botId]
       await storage.delete(req.params.id)
-      const questionsData = await storage.getQuestions({ question, categories }, { limit, offset })
+      const questionsData = await storage.getQuestions({ question, filteredContexts }, { limit, offset })
       res.send(questionsData)
     } catch (e) {
-      bp.logger.attachError(e).error('Could not delete QnA #' + req.params.id)
+      bp.logger.attachError(e).error(`Could not delete QnA #${req.params.id}`)
       res.status(500).send(e.message || 'Error')
-      sendToastError('Delete', e.message)
     }
   })
 
-  router.get('/categories', async (req, res) => {
-    const storage = botScopedStorage.get(req.params.botId)
-    const categories = await storage.getCategories()
-    res.send({ categories })
+  router.post('/questions/:id/convert', async (req: Request, res: Response) => {
+    const {
+      query: { limit, offset, question, filteredContexts }
+    } = req
+
+    try {
+      const { storage } = bots[req.params.botId]
+      await storage.convert(req.params.id)
+      const questionsData = await storage.getQuestions({ question, filteredContexts }, { limit, offset })
+      res.send(questionsData)
+    } catch (e) {
+      bp.logger.attachError(e).error(`Could not convert QnA #${req.params.id}`)
+      res.status(500).send(e.message || 'Error')
+    }
   })
 
-  router.get('/export', async (req, res) => {
-    const storage = botScopedStorage.get(req.params.botId)
-    const data: string = await prepareExport(storage)
-    res.setHeader('Content-Type', 'application/json')
-    res.setHeader('Content-disposition', `attachment; filename=qna_${moment().format('DD-MM-YYYY')}.json`)
-    res.end(data)
+  router.get(
+    '/export',
+    asyncMiddleware(async (req: Request, res: Response) => {
+      const { storage } = bots[req.params.botId]
+      const data: string = await prepareExport(storage, bp)
+
+      res.setHeader('Content-Type', 'application/json')
+      res.setHeader('Content-disposition', `attachment; filename=qna_${moment().format('DD-MM-YYYY')}.json`)
+      res.end(data)
+    })
+  )
+
+  router.get('/contentElementUsage', async (req: Request, res: Response) => {
+    const { storage } = bots[req.params.botId]
+    const usage = await storage.getContentElementUsage()
+    res.send(usage)
   })
 
   const upload = multer()
-  router.post('/import', upload.single('json'), async (req, res) => {
-    const storage = botScopedStorage.get(req.params.botId)
+  router.post(
+    '/analyzeImport',
+    upload.single('file'),
+    asyncMiddleware(async (req: any, res: Response) => {
+      const { storage } = bots[req.params.botId]
+      const cmsIds = await storage.getAllContentElementIds()
+      const importData = await prepareImport(JSON.parse(req.file.buffer))
 
-    const uploadStatusId = nanoid()
-    res.end(uploadStatusId)
+      res.send({
+        qnaCount: await storage.count(),
+        cmsCount: (cmsIds && cmsIds.length) || 0,
+        fileQnaCount: (importData.questions && importData.questions.length) || 0,
+        fileCmsCount: (importData.content && importData.content.length) || 0
+      })
+    })
+  )
 
-    if (yn(req.body.isReplace)) {
-      updateUploadStatus(uploadStatusId, 'Deleting existing questions')
-      const questions = await storage.fetchQNAs()
+  router.post(
+    '/import',
+    upload.single('file'),
+    asyncMiddleware(async (req: any, res: Response) => {
+      const uploadStatusId = nanoid()
+      res.send(uploadStatusId)
 
-      await storage.delete(questions.map(({ id }) => id))
-      updateUploadStatus(uploadStatusId, 'Deleted existing questions')
-    }
+      const { storage } = bots[req.params.botId]
 
-    try {
-      const parsedJson: any = JSON.parse(req.file.buffer)
-      const questions = (await validate(parsedJson, QnaItemArraySchema)) as QnaItem[]
+      if (req.body.action === 'clear_insert') {
+        updateUploadStatus(uploadStatusId, 'Deleting existing questions')
+        const questions = await storage.fetchQNAs()
 
-      await importQuestions(questions, storage, updateUploadStatus, uploadStatusId)
-      updateUploadStatus(uploadStatusId, 'Completed')
-    } catch (e) {
-      bp.logger.attachError(e).error('JSON Import Failure')
-      updateUploadStatus(uploadStatusId, `Error: ${e.message}`)
-    }
-  })
+        await storage.delete(questions.map(({ id }) => id))
+        updateUploadStatus(uploadStatusId, 'Deleted existing questions')
+      }
 
-  router.get('/json-upload-status/:uploadStatusId', async (req, res) => {
+      try {
+        const importData = await prepareImport(JSON.parse(req.file.buffer))
+
+        await importQuestions(importData, storage, bp, updateUploadStatus, uploadStatusId)
+        updateUploadStatus(uploadStatusId, 'Completed')
+      } catch (e) {
+        bp.logger.attachError(e).error('JSON Import Failure')
+        updateUploadStatus(uploadStatusId, `Error: ${e.message}`)
+      }
+    })
+  )
+
+  router.get('/json-upload-status/:uploadStatusId', async (req: Request, res: Response) => {
     res.end(jsonUploadStatuses[req.params.uploadStatusId])
   })
 
-  const sendToastError = (action, error) => {
-    bp.realtime.sendPayload(
-      bp.RealTimePayload.forAdmins('toast.qna-save', { text: `QnA ${action} Error: ${error}`, type: 'error' })
-    )
-  }
+  router.post('/intentActions', async (req: Request, res: Response) => {
+    const { intentName, event } = req.body
 
-  const updateUploadStatus = (uploadStatusId, status) => {
-    if (!uploadStatusId) {
-      return
+    try {
+      res.send(await getIntentActions(intentName, event, { bp, ...bots[req.params.botId] }))
+    } catch (err) {
+      bp.logger.attachError(err).error(err.message)
+      res.status(200).send([])
     }
-    jsonUploadStatuses[uploadStatusId] = status
+  })
+
+  router.get('/questionsByTopic', async (req: Request, res: Response) => {
+    try {
+      const { storage } = bots[req.params.botId]
+      res.send(await storage.getCountByTopic())
+    } catch (e) {
+      res.status(500).send(e.message || 'Error')
+    }
+  })
+
+  const updateUploadStatus = (uploadStatusId: string, status: string) => {
+    if (uploadStatusId) {
+      jsonUploadStatuses[uploadStatusId] = status
+    }
   }
 }

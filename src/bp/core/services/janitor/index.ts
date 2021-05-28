@@ -13,7 +13,7 @@ export abstract class Janitor {
 
   protected abstract getInterval(): Promise<string>
 
-  protected abstract async runTask(): Promise<void>
+  abstract runTask(): Promise<void>
 
   private runTaskWhenReady = () => {
     if (this.currentPromise) {
@@ -37,7 +37,7 @@ export abstract class Janitor {
     }
 
     if (this.intervalRef) {
-      throw new Error(`The Janitor is already started`)
+      throw new Error('The Janitor is already started')
     }
 
     this.intervalRef = setInterval(this.runTaskWhenReady.bind(this), ms(this.runningInterval))

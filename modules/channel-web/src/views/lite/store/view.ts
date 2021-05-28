@@ -66,7 +66,7 @@ class ViewStore {
 
   @computed
   get showConversationsButton() {
-    return this.rootStore.config && this.rootStore.config.showConversationsButton
+    return !this.rootStore.config?.conversationId && this.rootStore.config?.showConversationsButton
   }
 
   @computed
@@ -80,13 +80,15 @@ class ViewStore {
   }
 
   @computed
-  get showResetButton() {
+  get showDeleteConversationButton() {
     return (
-      !this.isConversationsDisplayed &&
-      !this.isBotInfoDisplayed &&
-      this.rootStore.config &&
-      this.rootStore.config.enableReset
+      !this.isConversationsDisplayed && !this.isBotInfoDisplayed && this.rootStore.config.enableConversationDeletion
     )
+  }
+
+  @computed
+  get showResetButton() {
+    return !this.isConversationsDisplayed && !this.isBotInfoDisplayed && this.rootStore.config?.enableReset
   }
 
   @computed
@@ -96,7 +98,7 @@ class ViewStore {
 
   @computed
   get showWidgetButton() {
-    return this.rootStore.config && !this.rootStore.config.hideWidget
+    return !this.rootStore.config?.hideWidget
   }
 
   @computed
@@ -111,18 +113,18 @@ class ViewStore {
 
   @computed
   get isBotInfoDisplayed(): boolean {
-    return this._showBotInfo && (this.rootStore.botInfo && this.rootStore.botInfo.showBotInfoPage)
+    return this._showBotInfo && this.rootStore.botInfo && this.rootStore.botInfo.showBotInfoPage
   }
 
   /** Returns the active transition for the side panel, like fade in or out */
   @computed
   get sideTransition() {
-    return !this.isFullscreen && this.transitions && this.transitions.sideTransition
+    return !this.isFullscreen && this.transitions?.sideTransition
   }
 
   @computed
   get widgetTransition() {
-    return this.transitions && this.transitions.widgetTransition
+    return this.transitions?.widgetTransition
   }
 
   @computed
@@ -150,11 +152,6 @@ class ViewStore {
     if (current) {
       this.setFocus(current.next)
     }
-  }
-
-  @action.bound
-  postMessage(name: string) {
-    window.parent.postMessage({ name: name }, '*')
   }
 
   @action.bound
@@ -190,7 +187,7 @@ class ViewStore {
   @action.bound
   setLoadingCompleted() {
     this._isLoading = false
-    this.postMessage('webchatLoaded')
+    this.rootStore.postMessage('webchatLoaded')
   }
 
   @action.bound
@@ -206,21 +203,21 @@ class ViewStore {
   @action.bound
   setLayoutWidth(width: string | number) {
     if (width) {
-      this.dimensions.layout = typeof width === 'number' ? width + 'px' : width
+      this.dimensions.layout = typeof width === 'number' ? `${width}px` : width
     }
   }
 
   @action.bound
   setContainerWidth(width: string | number) {
     if (width) {
-      this.dimensions.container = width = typeof width === 'number' ? width + 'px' : width
+      this.dimensions.container = width = typeof width === 'number' ? `${width}px` : width
     }
   }
 
   @action.bound
   addCustomAction(newAction: CustomAction) {
     if (this.customActions.find(act => act.id === newAction.id)) {
-      console.log(`Can't add another action with the same ID.`)
+      console.error("Can't add another action with the same ID.")
       return
     }
 
@@ -235,7 +232,7 @@ class ViewStore {
   @action.bound
   addHeaderButton(newButton: CustomButton) {
     if (this.customButtons.find(btn => btn.id === newButton.id)) {
-      console.log(`Can't add another button with the same ID.`)
+      console.error("Can't add another button with the same ID.")
       return
     }
 
@@ -263,6 +260,7 @@ class ViewStore {
   showChat() {
     if (this.disableAnimations) {
       this.activeView = 'side'
+      this.rootStore.postMessage('webchatOpened')
       return this._updateTransitions({ widgetTransition: undefined, sideTransition: 'none' })
     }
 
@@ -274,7 +272,7 @@ class ViewStore {
 
     this._endAnimation('side')
 
-    this.postMessage('webchatOpened')
+    this.rootStore.postMessage('webchatOpened')
   }
 
   @action.bound
@@ -285,6 +283,7 @@ class ViewStore {
 
     if (this.disableAnimations) {
       this.activeView = 'widget'
+      this.rootStore.postMessage('webchatClosed')
       return this._updateTransitions({ widgetTransition: undefined, sideTransition: undefined })
     }
 
@@ -298,7 +297,7 @@ class ViewStore {
 
     this._endAnimation('widget')
 
-    this.postMessage('webchatClosed')
+    this.rootStore.postMessage('webchatClosed')
   }
 
   @action.bound

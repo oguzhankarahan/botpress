@@ -13,6 +13,14 @@ export default async (bp: typeof sdk, testByBot: TestByBot) => {
     res.send({ scenarios, status })
   })
 
+  router.post('/deleteScenario', async (req, res) => {
+    if (!req.body.name) {
+      return res.sendStatus(400)
+    }
+    await testByBot[req.params.botId].deleteScenario(req.body.name)
+    res.sendStatus(200)
+  })
+
   router.post('/runAll', async (req, res) => {
     await testByBot[req.params.botId].executeAll()
     res.sendStatus(200)
@@ -50,6 +58,11 @@ export default async (bp: typeof sdk, testByBot: TestByBot) => {
     }
   })
 
+  router.post('/deleteAllScenarios', async (req, res) => {
+    await testByBot[req.params.botId].deleteAllScenarios()
+    return res.sendStatus(200)
+  })
+
   router.post('/incomingEvent', (req, res) => {
     const event = req.body as sdk.IO.IncomingEvent
     res.send(testByBot[req.params.botId].processIncomingEvent(event))
@@ -66,11 +79,14 @@ export default async (bp: typeof sdk, testByBot: TestByBot) => {
       return res.sendStatus(400)
     }
 
-    const elements = await bp.cms.getContentElements(req.params.botId, elementIds.map(x => x.replace('#!', '')))
+    const elements = await bp.cms.getContentElements(
+      req.params.botId,
+      elementIds.map(x => x.replace('#!', ''))
+    )
     const rendered = elements.map(element => {
       return {
         id: `#!${element.id}`,
-        preview: element.previews.en // TODO: Use the bot's default language instead of hardcoded english
+        preview: element.previews['en'] // TODO: Use the bot's default language instead of hardcoded english
       }
     })
 

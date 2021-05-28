@@ -21,4 +21,16 @@ export interface Config {
    * @default true
    */
   fetchUserInfo: boolean
+
+  /**
+   * Use the legacy RTM api
+   * @default false
+   */
+  useRTM: boolean
+
+  /**
+   * The duration of the authentication session when a user authenticate through this channel.
+   * @default 24h
+   */
+  chatUserAuthDuration: string
 }

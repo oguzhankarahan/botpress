@@ -5,7 +5,7 @@ title: Licensing
 
 ## Obtaining a License
 
-Please contact sales@botpress.io to obtain a license.
+Please contact our sales team using the request demo form on our [website](https://botpress.com/request-demo).
 
 ## Activate your License
 

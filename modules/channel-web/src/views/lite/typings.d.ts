@@ -2,6 +2,7 @@ import { RootStore } from './store'
 
 declare global {
   interface Window {
+    __BP_VISITOR_SOCKET_ID: string
     __BP_VISITOR_ID: string
     botpressWebChat: any
     store: RootStore
@@ -14,6 +15,7 @@ declare global {
     BP_BASE_PATH: string
     SEND_USAGE_STATS: boolean
     SHOW_POWERED_BY: boolean
+    USE_SESSION_STORAGE: boolean
     BP_STORAGE: any
     botpress: {
       [moduleName: string]: any
@@ -28,6 +30,7 @@ export namespace Renderer {
     payload?: any
     store?: RootStore
     bp?: StudioConnector
+    fromLabel?: string
     incomingEventId?: string
     /** When true, the message isn't wrapped by its bubble */
     noBubble?: boolean
@@ -40,9 +43,14 @@ export namespace Renderer {
     isBotMessage?: boolean
     isLastMessage?: boolean
     sentOn?: Date
+    inlineFeedback?: any
 
     onSendData?: (data: any) => Promise<void>
     onFileUpload?: (label: string, payload: any, file: File) => Promise<void>
+
+    /** Allows to autoplay voice messages coming from the bot */
+    onAudioEnded?: () => void
+    shouldPlay?: boolean
   }
 
   export type Button = {
@@ -55,11 +63,15 @@ export namespace Renderer {
   export type Text = {
     text: string
     markdown: boolean
+    escapeHTML: boolean
+    intl?: any
+    maxLength?: number
   } & Message
 
   export type QuickReply = {
     buttons: any
     quick_replies: any
+    disableFreeText: boolean
   } & Message
 
   export type QuickReplyButton = {
@@ -74,6 +86,18 @@ export namespace Renderer {
       storage: string
       text: string
     }
+    escapeTextHTML: boolean
+  }
+
+  export interface VoiceMessage {
+    file: {
+      type: string
+      audio: string
+      autoPlay?: boolean
+    }
+
+    shouldPlay: boolean
+    onAudioEnded: () => void
   }
 
   export interface FileInput {
@@ -116,28 +140,37 @@ export interface StudioConnector {
   events: any
   /** An axios instance */
   axios: any
-  toast: any
   getModuleInjector: any
   loadModuleView: any
 }
 
-export type Config = {
+export interface Config {
   botId?: string
   externalAuthToken?: string
   userId?: string
+  conversationId?: number
   /** Allows to set a different user id for different windows (eg: studio, specific bot, etc) */
   userIdScope?: string
   enableReset: boolean
   stylesheet: string
+  isEmulator?: boolean
   extraStylesheet: string
   showConversationsButton: boolean
   showUserName: boolean
   showUserAvatar: boolean
   showTimestamp: boolean
   enableTranscriptDownload: boolean
+  enableConversationDeletion: boolean
   enableArrowNavigation: boolean
+  closeOnEscape: boolean
   botName?: string
+  composerPlaceholder?: string
   avatarUrl?: string
+  /** Force the display language of the webchat (en, fr, ar, ru, etc..)
+   * Defaults to the user's browser language if not set
+   * Set to 'browser' to force use the browser's language
+   */
+  locale?: 'browser' | string
   /** Small description written under the bot's name */
   botConvoDescription?: string
   /** Replace or insert components at specific locations */
@@ -148,13 +181,29 @@ export type Config = {
   disableAnimations: boolean
   /** When true, sets ctrl+Enter as shortcut for reset session then send */
   enableResetSessionShortcut: boolean
+  /** When true, webchat tries to use native webspeech api (uses hosted mozilla and google voice services) */
+  enableVoiceComposer: boolean
   recentConversationLifetime: string
   startNewConvoOnTimeout: boolean
+  /** Use sessionStorage instead of localStorage, which means the session expires when tab is closed */
+  useSessionStorage: boolean
   containerWidth?: string | number
   layoutWidth?: string | number
   showPoweredBy: boolean
   /** When enabled, sent messages are persisted to local storage (recall previous messages)  */
   enablePersistHistory: boolean
+  /** Experimental: expose the store to the parent frame for more control on the webchat's behavior */
+  exposeStore: boolean
+  /** Reference ensures that a specific value and its signature are valid */
+  reference: string
+  /** If true, Websocket is created when the Webchat is opened. Bot cannot be proactive. */
+  lazySocket?: boolean
+  /** If true, chat will no longer play the notification sound for new messages. */
+  disableNotificationSound?: boolean
+  /** Refers to a specific webchat reference in parent window. Useful when using multiple chat window */
+  chatId?: string
+  /** CSS class to be applied to iframe */
+  className?: string
 }
 
 type OverridableComponents = 'below_conversation' | 'before_container' | 'composer'
@@ -182,6 +231,11 @@ export interface BotInfo {
   description: string
   details: BotDetails
   showBotInfoPage: boolean
+  languages: string[]
+  security: {
+    escapeHTML: boolean
+  }
+  lazySocket: boolean
 }
 
 interface Conversation {
@@ -215,6 +269,7 @@ export type CurrentConversation = {
 export interface Message {
   id: string
   userId: string
+  eventId: string
   incomingEventId: string
   conversationId: number
   avatar_url: string | undefined
@@ -227,6 +282,11 @@ export interface Message {
   sent_on: Date
   // The typing delay in ms
   timeInMs: number
+}
+
+export interface QueuedMessage {
+  message: Message
+  showAt: Date
 }
 
 export interface HTMLInputEvent extends Event {
@@ -269,4 +329,9 @@ interface MessageWrapper {
   module: string
   /** Name of the component exposed by the module */
   component: string
+}
+
+export interface EventFeedback {
+  incomingEventId: string
+  feedback?: number
 }

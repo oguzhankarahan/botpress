@@ -1,29 +1,44 @@
+import { createEventAdapter } from '@slack/events-api'
+import SlackEventAdapter from '@slack/events-api/dist/adapter'
 import { createMessageAdapter } from '@slack/interactive-messages'
+import SlackMessageAdapter from '@slack/interactive-messages/dist/adapter'
 import { RTMClient } from '@slack/rtm-api'
 import { WebClient } from '@slack/web-api'
 import axios from 'axios'
 import * as sdk from 'botpress/sdk'
+import { ChannelRenderer, ChannelSender } from 'common/channel'
 import _ from 'lodash'
 import LRU from 'lru-cache'
 import ms from 'ms'
-
 import { Config } from '../config'
+import {
+  SlackCarouselRenderer,
+  SlackChoicesRenderer,
+  SlackImageRenderer,
+  SlackTextRenderer,
+  SlackCardRenderer,
+  SlackFeedbackRenderer,
+  SlackDropdownRenderer
+} from '../renderers'
+import { SlackCommonSender, SlackTypingSender } from '../senders'
+import { CHANNEL_NAME } from './constants'
 
-import { Clients } from './typings'
+import { Clients, SlackContext } from './typings'
 
 const debug = DEBUG('channel-slack')
 const debugIncoming = debug.sub('incoming')
 const debugOutgoing = debug.sub('outgoing')
-
-const outgoingTypes = ['text', 'image', 'actions', 'typing', 'carousel']
 
 const userCache = new LRU({ max: 1000, maxAge: ms('1h') })
 
 export class SlackClient {
   private client: WebClient
   private rtm: RTMClient
-  private interactive: any
+  private events: SlackEventAdapter
+  private interactive: SlackMessageAdapter
   private logger: sdk.Logger
+  private renderers: ChannelRenderer<SlackContext>[]
+  private senders: ChannelSender<SlackContext>[]
 
   constructor(private bp: typeof sdk, private botId: string, private config: Config, private router) {
     this.logger = bp.logger.forBot(botId)
@@ -36,17 +51,39 @@ export class SlackClient {
       )
     }
 
-    this.client = new WebClient(this.config.botToken)
-    this.rtm = new RTMClient(this.config.botToken)
-    this.interactive = createMessageAdapter(this.config.signingSecret, {}) as any
+    this.renderers = [
+      new SlackCardRenderer(),
+      new SlackTextRenderer(),
+      new SlackImageRenderer(),
+      new SlackCarouselRenderer(),
+      new SlackDropdownRenderer(),
+      new SlackChoicesRenderer(),
+      new SlackFeedbackRenderer()
+    ]
+    this.senders = [new SlackTypingSender(), new SlackCommonSender()]
 
-    await this._setupInteractiveListener()
+    this.client = new WebClient(this.config.botToken)
+    if (this.config.useRTM || this.config.useRTM === undefined) {
+      this.logger.warn(`[${this.botId}] Slack configured to used legacy RTM`)
+      this.rtm = new RTMClient(this.config.botToken)
+    } else {
+      this.events = createEventAdapter(this.config.signingSecret)
+    }
+    this.interactive = createMessageAdapter(this.config.signingSecret)
+
     await this._setupRealtime()
+    await this._setupInteractiveListener()
+  }
+
+  async shutdown() {
+    if (this.rtm) {
+      await this.rtm.disconnect()
+    }
   }
 
   private async _setupInteractiveListener() {
     this.interactive.action({ type: 'button' }, async payload => {
-      debugIncoming(`Received interactive message %o`, payload)
+      debugIncoming('Received interactive message %o', payload)
 
       const actionId = _.get(payload, 'actions[0].action_id', '')
       const label = _.get(payload, 'actions[0].text.text', '')
@@ -73,23 +110,44 @@ export class SlackClient {
       await this.sendEvent(payload, { type: 'quick_reply', text: label, payload: value })
     })
 
-    this.router.use(`/bots/${this.botId}/callback`, this.interactive.requestListener())
-    const publicPath = await this.router.getPublicPath()
+    this.interactive.action({ actionId: 'feedback-overflow' }, async payload => {
+      debugIncoming('Received feedback %o', payload)
 
-    // Bot ID is used twice, because slack must setup multiple listeners itself, so can't just be redirected
-    this.logger.info(
-      `[${this.botId}] Interactive Endpoint URL: ${publicPath.replace('BOT_ID', this.botId)}/bots/${
-        this.botId
-      }/callback`
-    )
+      const action = payload.actions[0]
+      const blockId = action.block_id
+      const selectedOption = action.selected_option.value
+
+      const incomingEventId = blockId.replace('feedback-', '')
+      const feedback = parseInt(selectedOption)
+
+      const events = await this.bp.events.findEvents({ incomingEventId, direction: 'incoming' })
+      const event = events[0]
+      await this.bp.events.updateEvent(event.id, { feedback })
+    })
+
+    this.router.use(`/bots/${this.botId}/callback`, this.interactive.requestListener())
+
+    await this.displayUrl('Interactive', 'callback')
   }
 
   private async _setupRealtime() {
-    const discardedSubtypes = ['bot_message', 'message_deleted', 'message_changed']
-    this.rtm.on('message', async payload => {
-      debugIncoming(`Received real time payload %o`, payload)
+    if (this.rtm) {
+      this.listenMessages(this.rtm)
+      await this.rtm.start()
+    } else {
+      this.listenMessages(this.events)
+      this.router.post(`/bots/${this.botId}/events-callback`, this.events.requestListener())
+      await this.displayUrl('Events', 'events-callback')
+    }
+  }
 
-      if (!discardedSubtypes.includes(payload.subtype)) {
+  private listenMessages(com: SlackEventAdapter | RTMClient) {
+    const discardedSubtypes = ['bot_message', 'message_deleted', 'message_changed']
+
+    com.on('message', async payload => {
+      debugIncoming('Received real time payload %o', payload)
+
+      if (!discardedSubtypes.includes(payload.subtype) && !payload.bot_id) {
         await this.sendEvent(payload, {
           type: 'text',
           text: _.find(_.at(payload, ['text', 'files.0.name', 'files.0.title']), x => x && x.length) || 'N/A'
@@ -97,7 +155,7 @@ export class SlackClient {
       }
     })
 
-    return this.rtm.start()
+    com.on('error', err => this.bp.logger.attachError(err).error('An error occurred'))
   }
 
   private async _getUserInfo(userId: string) {
@@ -117,66 +175,83 @@ export class SlackClient {
     return userCache.get(userId) || {}
   }
 
-  async handleOutgoingEvent(event: sdk.IO.Event, next: sdk.IO.MiddlewareNextCallback) {
-    if (event.type === 'typing') {
-      await this.rtm.sendTyping(event.threadId || event.target)
-      await new Promise(resolve => setTimeout(() => resolve(), 1000))
+  private async displayUrl(title: string, end: string) {
+    const publicPath = await this.router.getPublicPath()
+    this.logger.info(
+      `[${this.botId}] ${title} Endpoint URL: ${publicPath.replace('BOT_ID', this.botId)}/bots/${this.botId}/${end}`
+    )
+  }
 
-      return next(undefined, false)
+  async handleOutgoingEvent(event: sdk.IO.OutgoingEvent, next: sdk.IO.MiddlewareNextCallback) {
+    const foreignId = await this.bp.experimental.conversations
+      .forBot(this.botId)
+      .getForeignId(CHANNEL_NAME, event.threadId)
+    const [channelId, userId] = this.splitConvoKey(foreignId)
+
+    const context: SlackContext = {
+      bp: this.bp,
+      event,
+      client: { web: this.client, events: this.events, interactive: this.interactive },
+      handlers: [],
+      payload: _.cloneDeep(event.payload),
+      botUrl: process.EXTERNAL_URL,
+      message: { blocks: [] },
+      channelId
     }
 
-    const messageType = event.type === 'default' ? 'text' : event.type
-    if (!_.includes(outgoingTypes, messageType)) {
-      return next(new Error('Unsupported event type: ' + event.type))
+    for (const renderer of this.renderers) {
+      if (renderer.handles(context)) {
+        renderer.render(context)
+        context.handlers.push(renderer.id)
+      }
     }
 
-    const blocks = []
-    if (messageType === 'image' || messageType === 'actions') {
-      blocks.push(event.payload)
-    } else if (messageType === 'carousel') {
-      event.payload.cards.forEach(card => blocks.push(...card))
+    for (const sender of this.senders) {
+      if (sender.handles(context)) {
+        await sender.send(context)
+      }
     }
 
-    if (event.payload.quick_replies) {
-      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: event.payload.text } })
-      blocks.push(event.payload.quick_replies)
-    }
-
-    const message = {
-      text: event.payload.text,
-      channel: event.threadId || event.target,
-      blocks
-    }
-
-    debugOutgoing(`Sending message %o`, message)
-    await this.client.chat.postMessage(message)
+    await this.bp.experimental.messages
+      .forBot(this.botId)
+      .create(event.threadId, event.payload, undefined, event.id, event.incomingEventId)
 
     next(undefined, false)
   }
 
   private async sendEvent(ctx: any, payload: any) {
-    const threadId = _.get(ctx, 'channel.id') || _.get(ctx, 'channel')
-    const target = _.get(ctx, 'user.id') || _.get(ctx, 'user')
+    const channelId = _.get(ctx, 'channel.id') || _.get(ctx, 'channel')
+    const userId = _.get(ctx, 'user.id') || _.get(ctx, 'user')
     let user = {}
 
-    if (target && this.config.fetchUserInfo) {
+    if (userId && this.config.fetchUserInfo) {
       try {
-        user = await this._getUserInfo(target.toString())
+        user = await this._getUserInfo(userId.toString())
       } catch (err) {}
     }
 
-    this.bp.events.sendEvent(
-      this.bp.IO.Event({
-        botId: this.botId,
-        channel: 'slack',
-        direction: 'incoming',
-        payload: { ...ctx, ...payload, user_info: user },
-        type: payload.type,
-        preview: payload.text,
-        threadId: threadId && threadId.toString(),
-        target: target && target.toString()
-      })
-    )
+    let convoId = await this.bp.experimental.conversations
+      .forBot(this.botId)
+      .getLocalId(CHANNEL_NAME, this.getConvoKey(channelId, userId))
+
+    if (!convoId) {
+      const conversation = await this.bp.experimental.conversations.forBot(this.botId).create(userId)
+      convoId = conversation.id
+
+      await this.bp.experimental.conversations
+        .forBot(this.botId)
+        .createMapping(CHANNEL_NAME, conversation.id, this.getConvoKey(channelId, userId))
+    }
+
+    await this.bp.experimental.messages.forBot(this.botId).receive(convoId, payload, { channel: CHANNEL_NAME })
+  }
+
+  private getConvoKey(channelId: string, userId: string) {
+    return `${channelId}-${userId}`
+  }
+
+  private splitConvoKey(convoKey: string) {
+    return convoKey.split('-')
   }
 }
 
@@ -192,7 +267,7 @@ export async function setupMiddleware(bp: typeof sdk, clients: Clients) {
   })
 
   async function outgoingHandler(event: sdk.IO.Event, next: sdk.IO.MiddlewareNextCallback) {
-    if (event.channel !== 'slack') {
+    if (event.channel !== CHANNEL_NAME) {
       return next()
     }
 

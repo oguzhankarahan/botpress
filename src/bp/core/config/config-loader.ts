@@ -1,26 +1,48 @@
 import { BotConfig, Logger } from 'botpress/sdk'
-import { stringify } from 'core/misc/utils'
-import ModuleResolver from 'core/modules/resolver'
-import { GhostService } from 'core/services'
+import { ObjectCache } from 'common/object-cache'
+import { GhostService } from 'core/bpfs'
+import { calculateHash, stringify } from 'core/misc/utils'
+import { ModuleResolver } from 'core/modules'
 import { TYPES } from 'core/types'
 import { FatalError } from 'errors'
 import fs from 'fs'
-import fse from 'fs-extra'
 import { inject, injectable } from 'inversify'
 import defaultJsonBuilder from 'json-schema-defaults'
 import _, { PartialDeep } from 'lodash'
 import path from 'path'
 
 import { BotpressConfig } from './botpress.config'
+import { getValidJsonSchemaProperties, getValueFromEnvKey, SchemaNode } from './config-utils'
+
+/**
+ * These properties should not be considered when calculating the config hash
+ * They are always read from the configuration file and can be dynamically changed
+ */
+const removeDynamicProps = config => _.omit(config, ['superAdmins'])
 
 @injectable()
 export class ConfigProvider {
+  public onBotpressConfigChanged: ((initialHash: string, newHash: string) => Promise<void>) | undefined
+
   private _botpressConfigCache: BotpressConfig | undefined
+  public initialConfigHash: string | undefined
+  public currentConfigHash!: string
 
   constructor(
     @inject(TYPES.GhostService) private ghostService: GhostService,
-    @inject(TYPES.Logger) private logger: Logger
-  ) {}
+    @inject(TYPES.Logger) private logger: Logger,
+    @inject(TYPES.ObjectCache) private cache: ObjectCache
+  ) {
+    this.cache.events.on('invalidation', async key => {
+      if (key === 'object::data/global/botpress.config.json') {
+        this._botpressConfigCache = undefined
+        const config = await this.getBotpressConfig()
+
+        this.currentConfigHash = calculateHash(JSON.stringify(removeDynamicProps(config)))
+        this.onBotpressConfigChanged && this.onBotpressConfigChanged(this.initialConfigHash!, this.currentConfigHash)
+      }
+    })
+  }
 
   async getBotpressConfig(): Promise<BotpressConfig> {
     if (this._botpressConfigCache) {
@@ -30,8 +52,11 @@ export class ConfigProvider {
     await this.createDefaultConfigIfMissing()
 
     const config = await this.getConfig<BotpressConfig>('botpress.config.json')
+    _.merge(config, await this._loadBotpressConfigFromEnv(config))
 
-    config.httpServer.port = process.env.PORT ? parseInt(process.env.PORT) : config.httpServer.port
+    // deprecated notice
+    const envPort = process.env.BP_PORT || process.env.PORT
+    config.httpServer.port = envPort ? parseInt(envPort) : config.httpServer.port
     config.httpServer.host = process.env.BP_HOST || config.httpServer.host
     process.PROXY = process.core_env.BP_PROXY || config.httpServer.proxy
 
@@ -39,75 +64,116 @@ export class ConfigProvider {
       config.pro.licenseKey = process.env.BP_LICENSE_KEY || config.pro.licenseKey
     }
 
+    const deprecatedEnvKeys = [
+      ['BP_PORT', 'httpServer.port'],
+      ['BP_HOST', 'httpServer.host'],
+      ['BP_PROXY', 'httpServer.proxy'],
+      ['BP_LICENSE_KEY', 'pro.licenseKey'],
+      ['PRO_ENABLED', 'pro.enabled']
+    ]
+    deprecatedEnvKeys.forEach(([depr, preferred]) => {
+      const newKey = this._makeBPConfigEnvKey(preferred)
+      if (process.env[depr] !== undefined) {
+        this.logger.warn(
+          `(Deprecated) use standard syntax to set config from environment variable: ${depr} ==> ${newKey}`
+        )
+      }
+    })
+
     this._botpressConfigCache = config
+
+    if (!this.initialConfigHash) {
+      this.initialConfigHash = calculateHash(JSON.stringify(removeDynamicProps(config)))
+    }
+
     return config
   }
 
-  async mergeBotpressConfig(partialConfig: PartialDeep<BotpressConfig>): Promise<void> {
+  private _makeBPConfigEnvKey(option: string): string {
+    return `BP_CONFIG_${option.split('.').join('_')}`.toUpperCase()
+  }
+
+  private async _loadBotpressConfigFromEnv(currentConfig: BotpressConfig): Promise<PartialDeep<BotpressConfig>> {
+    const configOverrides: PartialDeep<BotpressConfig> = {}
+    const weakSchema = await this._getBotpressConfigSchema()
+    const options = await getValidJsonSchemaProperties(weakSchema as SchemaNode, currentConfig)
+    for (const option of options) {
+      const envKey = this._makeBPConfigEnvKey(option)
+      const value = getValueFromEnvKey(envKey)
+      if (value !== undefined) {
+        _.set(configOverrides, option, value)
+      }
+    }
+
+    return configOverrides
+  }
+
+  async mergeBotpressConfig(partialConfig: PartialDeep<BotpressConfig>, clearHash?: boolean): Promise<void> {
     this._botpressConfigCache = undefined
     const content = await this.ghostService.global().readFileAsString('/', 'botpress.config.json')
     const config = _.merge(JSON.parse(content), partialConfig)
 
-    await this.ghostService.global().upsertFile('/', 'botpress.config.json', stringify(config))
+    await this.setBotpressConfig(config, clearHash)
   }
 
-  async invalidateBotpressConfig(): Promise<void> {
-    this._botpressConfigCache = undefined
-    await this.ghostService.global().invalidateFile('/', 'botpress.config.json')
+  async setBotpressConfig(config: BotpressConfig, clearHash?: boolean): Promise<void> {
+    await this.ghostService.global().upsertFile('/', 'botpress.config.json', stringify(config))
+
+    if (clearHash) {
+      this.initialConfigHash = undefined
+    }
   }
 
   async getBotConfig(botId: string): Promise<BotConfig> {
     return this.getConfig<BotConfig>('bot.config.json', botId)
   }
 
-  async setBotConfig(botId: string, config: BotConfig) {
-    await this.ghostService.forBot(botId).upsertFile('/', 'bot.config.json', stringify(config))
+  async setBotConfig(botId: string, config: BotConfig, ignoreLock?: boolean) {
+    await this.ghostService.forBot(botId).upsertFile('/', 'bot.config.json', stringify(config), { ignoreLock })
   }
 
-  async mergeBotConfig(botId: string, partialConfig: PartialDeep<BotConfig>): Promise<BotConfig> {
+  async mergeBotConfig(botId: string, partialConfig: PartialDeep<BotConfig>, ignoreLock?: boolean): Promise<BotConfig> {
     const originalConfig = await this.getBotConfig(botId)
     const config = _.merge(originalConfig, partialConfig)
-    await this.setBotConfig(botId, config)
+    await this.setBotConfig(botId, config, ignoreLock)
     return config
   }
 
+  private async _getBotpressConfigSchema(): Promise<object> {
+    return this.ghostService.root().readFileAsObject<any>('/', 'botpress.config.schema.json')
+  }
+
   public async createDefaultConfigIfMissing() {
-    const botpressConfig = path.resolve(process.PROJECT_LOCATION, 'data', 'global', 'botpress.config.json')
+    await this._copyConfigSchemas()
 
-    if (!fse.existsSync(botpressConfig)) {
-      await this.ensureDataFolderStructure()
-
-      const botpressConfigSchema = path.resolve(process.PROJECT_LOCATION, 'data', 'botpress.config.schema.json')
-      const defaultConfig = defaultJsonBuilder(JSON.parse(fse.readFileSync(botpressConfigSchema, 'utf-8')))
+    if (!(await this.ghostService.global().fileExists('/', 'botpress.config.json'))) {
+      const botpressConfigSchema = await this._getBotpressConfigSchema()
+      const defaultConfig: BotpressConfig = defaultJsonBuilder(botpressConfigSchema)
 
       const config = {
-        $schema: `../botpress.config.schema.json`,
+        $schema: '../botpress.config.schema.json',
         ...defaultConfig,
         modules: await this.getModulesListConfig(),
         version: process.BOTPRESS_VERSION
       }
 
-      await fse.writeFileSync(botpressConfig, stringify(config))
+      await this.ghostService.global().upsertFile('/', 'botpress.config.json', stringify(config))
     }
   }
 
-  private async ensureDataFolderStructure() {
-    const requiredFolders = ['bots', 'global', 'storage']
+  private async _copyConfigSchemas() {
     const schemasToCopy = ['botpress.config.schema.json', 'bot.config.schema.json']
-    const dataFolder = path.resolve(process.PROJECT_LOCATION, 'data')
-
-    for (const folder of requiredFolders) {
-      await fse.ensureDir(path.resolve(dataFolder, folder))
-    }
 
     for (const schema of schemasToCopy) {
-      const schemaContent = fs.readFileSync(path.join(__dirname, 'schemas', schema))
-      fs.writeFileSync(path.resolve(dataFolder, schema), schemaContent)
+      if (!(await this.ghostService.root().fileExists('/', schema))) {
+        const schemaContent = fs.readFileSync(path.join(__dirname, 'schemas', schema))
+        await this.ghostService.root().upsertFile('/', schema, schemaContent)
+      }
     }
   }
 
   public async getModulesListConfig() {
-    const enabledByDefault = [
+    const enabledModules = this.parseEnabledModules() ?? [
       'analytics',
       'basic-skills',
       'builtin',
@@ -116,14 +182,29 @@ export class ConfigProvider {
       'qna',
       'extensions',
       'code-editor',
-      'testing'
+      'testing',
+      'examples'
     ]
 
     // here it's ok to use the module resolver because we are discovering the built-in modules only
     const resolver = new ModuleResolver(this.logger)
-    return await resolver.getModulesList().map(module => {
-      return { location: `MODULES_ROOT/${module}`, enabled: enabledByDefault.includes(module) }
+    return (await resolver.getModulesList()).map(module => {
+      return { location: `MODULES_ROOT/${module}`, enabled: enabledModules.includes(module) }
     })
+  }
+
+  private parseEnabledModules = (): string[] | undefined => {
+    if (!process.env.BP_ENABLED_MODULES) {
+      return
+    }
+
+    try {
+      return JSON.parse(process.env.BP_ENABLED_MODULES)
+    } catch (err) {
+      this.logger
+        .attachError(err)
+        .warn('Error parsing BP_ENABLED_MODULES environment variable. Falling back to default modules')
+    }
   }
 
   private async getConfig<T>(fileName: string, botId?: string): Promise<T> {
@@ -155,6 +236,34 @@ export class ConfigProvider {
       return <T>JSON.parse(content)
     } catch (e) {
       throw new FatalError(e, `Error reading configuration file "${fileName}"`)
+    }
+  }
+
+  public async getBrandingConfig(appName: 'admin' | 'studio') {
+    const defaultConfig = {
+      admin: {
+        title: 'Botpress Admin Panel',
+        favicon: 'assets/admin/ui/public/favicon.ico',
+        customCss: ''
+      },
+      studio: {
+        title: 'Botpress Studio',
+        favicon: 'assets/ui-studio/public/img/favicon.png',
+        customCss: ''
+      }
+    }
+
+    if (!process.IS_PRO_ENABLED) {
+      return defaultConfig[appName]
+    }
+
+    const config = await this.getBotpressConfig()
+    const { title, favicon, customCss } = config.pro?.branding?.[appName] ?? {}
+
+    return {
+      title: title || '',
+      favicon: favicon || '',
+      customCss: customCss || ''
     }
   }
 }

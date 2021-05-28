@@ -1,9 +1,9 @@
-import { KnexExtension } from 'common/knex'
+import { KnexExtended, KnexExtension } from 'botpress/sdk'
 import Knex from 'knex'
 import moment from 'moment'
 import { VError } from 'verror'
 
-export const patchKnex = (knex: Knex): Knex & KnexExtension => {
+export const patchKnex = (knex: Knex): KnexExtended => {
   const isLite = knex.client.config.client === 'sqlite3'
   const location = isLite ? knex.client.connectionSettings.filename : undefined
 
@@ -39,12 +39,13 @@ export const patchKnex = (knex: Knex): Knex & KnexExtension => {
     })
   }
 
-  // only works for single insert beause of SQLite
+  // only works for single insert because of SQLite
   const insertAndRetrieve = async <T>(
     tableName: string,
     data: any,
     returnColumns: string | string[] = 'id',
-    idColumnName: string = 'id'
+    idColumnName: string = 'id',
+    trx?: Knex.Transaction
   ): Promise<T> => {
     const handleResult = res => {
       if (!res || res.length !== 1) {
@@ -60,7 +61,8 @@ export const patchKnex = (knex: Knex): Knex & KnexExtension => {
         .returning(returnColumns)
         .then(handleResult)
     }
-    return knex.transaction(trx =>
+
+    const getQuery = trx =>
       knex(tableName)
         .insert(data)
         .transacting(trx)
@@ -68,8 +70,12 @@ export const patchKnex = (knex: Knex): Knex & KnexExtension => {
           knex
             .select(knex.raw('last_insert_rowid() as id'))
             .transacting(trx)
-            .then(([{ id: dbId }]) => {
-              const id = (data && data.id) || dbId
+            .then(([{ id: rowid }]) => {
+              let id = data && data.id
+              if (!id || idColumnName === 'rowid') {
+                id = rowid
+              }
+
               if (returnColumns === idColumnName) {
                 return id
               }
@@ -81,6 +87,14 @@ export const patchKnex = (knex: Knex): Knex & KnexExtension => {
                 .then(handleResult)
             })
         )
+
+    // transactions inside another transaction may lead to a deadlock
+    if (trx) {
+      return getQuery(trx)
+    }
+
+    return knex.transaction(trx =>
+      getQuery(trx)
         .then(trx.commit)
         .catch(trx.rollback)
     )
@@ -97,19 +111,34 @@ export const patchKnex = (knex: Knex): Knex & KnexExtension => {
   }
 
   const date: Knex.Date = {
-    format: dateFormat,
-    now: () => (isLite ? knex.raw(`strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`) : knex.raw('now()')),
+    set: (date?: Date) => (date ? date.toISOString() : undefined),
+    get: date => new Date(date),
 
+    format: dateFormat,
+    now: () => (isLite ? knex.raw("strftime('%Y-%m-%dT%H:%M:%fZ', 'now')") : knex.raw('now()')),
+    today: () => (isLite ? knex.raw('(date())') : knex.raw('(date(now()))')),
     isBefore: (d1: Knex.ColumnOrDate, d2: Knex.ColumnOrDate): Knex.Raw => {
       const exp1 = columnOrDateFormat(d1)
       const exp2 = columnOrDateFormat(d2)
-      return knex.raw(exp1 + ' < ' + exp2)
+      return knex.raw(`${exp1} < ${exp2}`)
+    },
+
+    isBeforeOrOn: (d1: Knex.ColumnOrDate, d2: Knex.ColumnOrDate): Knex.Raw => {
+      const exp1 = columnOrDateFormat(d1)
+      const exp2 = columnOrDateFormat(d2)
+      return knex.raw(`${exp1} <= ${exp2}`)
     },
 
     isAfter: (d1: Knex.ColumnOrDate, d2: Knex.ColumnOrDate): Knex.Raw => {
       const exp1 = columnOrDateFormat(d1)
       const exp2 = columnOrDateFormat(d2)
-      return knex.raw(exp1 + ' > ' + exp2)
+      return knex.raw(`${exp1} > ${exp2}`)
+    },
+
+    isAfterOrOn: (d1: Knex.ColumnOrDate, d2: Knex.ColumnOrDate): Knex.Raw => {
+      const exp1 = columnOrDateFormat(d1)
+      const exp2 = columnOrDateFormat(d2)
+      return knex.raw(`${exp1} >= ${exp2}`)
     },
 
     isBetween: (date: Knex.ColumnOrDate, betweenA: Knex.ColumnOrDate, betweenB: Knex.ColumnOrDate): Knex.Raw => {

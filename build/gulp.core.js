@@ -8,6 +8,8 @@ const file = require('gulp-file')
 const buildJsonSchemas = require('./jsonschemas')
 const fs = require('fs')
 const mkdirp = require('mkdirp')
+const exec = require('child_process').exec
+const rimraf = require('gulp-rimraf')
 
 const maybeFetchPro = () => {
   const isProBuild = process.env.EDITION === 'pro' || fs.existsSync('pro')
@@ -28,6 +30,10 @@ const writeMetadata = () => {
   return file('metadata.json', metadata, { src: true }).pipe(gulp.dest('./'))
 }
 
+const clearMigrations = () => {
+  return gulp.src('./out/bp/migrations/*.*', { allowEmpty: true }).pipe(rimraf())
+}
+
 const tsProject = ts.createProject(path.resolve(__dirname, '../src/tsconfig.json'))
 const compileTypescript = () => {
   return tsProject
@@ -46,7 +52,7 @@ const compileTypescript = () => {
 }
 
 const watch = () => {
-  return gulp.watch(['./src/**/*.ts', '!./src/bp/ui-*/**/*.ts'], compileTypescript)
+  return gulp.watch(['./src/**/*.ts'], { ignored: ['./src/bp/ui-**'] }, compileTypescript)
 }
 
 const createOutputDirs = () => {
@@ -54,36 +60,6 @@ const createOutputDirs = () => {
     .src('*.*', { read: false })
     .pipe(gulp.dest('./out/bp/data'))
     .pipe(gulp.dest('./out/bp/data/storage'))
-}
-
-const createMigration = cb => {
-  const args = require('yargs')(process.argv).argv
-  if (!args.ver) {
-    console.error('Version is required (set with --ver parameter')
-    console.error('Example: yarn cmd migration:create --target core --ver 13.0.0 --title "some config update"')
-    return cb()
-  }
-
-  const target = args.target || 'core'
-  const version = args.ver.replace(/[ .]/g, '_').replace('v', '')
-  const title = (args.title || '').replace(/[ .]/g, '_').toLowerCase()
-
-  const template =
-    target === 'core'
-      ? path.resolve(__dirname, '../src/bp/core/services/migration/template_core.ts')
-      : path.resolve(__dirname, '../src/bp/core/services/migration/template_module.ts')
-
-  const targetDir =
-    target === 'core'
-      ? path.resolve(__dirname, '../src/bp/migrations')
-      : path.resolve(__dirname, `../modules/${target}/src/migrations`)
-
-  const destination = path.resolve(targetDir, `v${version}-${Math.round(Date.now() / 1000)}-${title}.ts`)
-  mkdirp.sync(targetDir)
-  fs.copyFileSync(template, destination)
-
-  console.log('Migration file created at ' + destination)
-  cb()
 }
 
 const buildSchemas = cb => {
@@ -95,24 +71,38 @@ const copyBinaries = () => {
   return gulp.src('src/bp/ml/bin/*.*').pipe(gulp.dest('./out/bp/ml/bin'))
 }
 
-const copyJs = () => {
-  return gulp.src('src/bp/ml/svm-js/**/*.*').pipe(gulp.dest('./out/bp/ml/svm-js'))
+const copyPreTrained = () => {
+  return gulp.src('src/bp/nlu/engine/assets/pre-trained/*').pipe(gulp.dest('./out/bp/nlu/engine/assets/pre-trained'))
+}
+
+const copyStopWords = () => {
+  return gulp.src('src/bp/nlu/engine/assets/stop-words/*').pipe(gulp.dest('./out/bp/nlu/engine/assets/stop-words'))
+}
+
+const checkTranslations = cb => {
+  const reorder = process.argv.find(x => x.toLowerCase() === '--reorder')
+  exec(`node build/check-translations.js ${reorder && '--reorder'}`, (err, stdout, stderr) => {
+    console.log(stdout, stderr)
+    cb(err)
+  })
 }
 
 const build = () => {
   return gulp.series([
+    clearMigrations,
     maybeFetchPro,
     writeMetadata,
     compileTypescript,
     buildSchemas,
     createOutputDirs,
-    copyJs,
-    copyBinaries
+    copyBinaries,
+    copyPreTrained,
+    copyStopWords
   ])
 }
 
 module.exports = {
   build,
   watch,
-  createMigration
+  checkTranslations
 }

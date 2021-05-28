@@ -33,14 +33,21 @@ export function config(projectPath) {
       'react-dom': 'ReactDOM',
       'react-bootstrap': 'ReactBootstrap',
       '@blueprintjs/core': 'BlueprintJsCore',
+      '@blueprintjs/select': 'BlueprintJsSelect',
       'botpress/ui': 'BotpressUI',
       'botpress/content-picker': 'BotpressContentPicker',
-      'botpress/documentation': 'DocumentationProvider'
+      'botpress/documentation': 'DocumentationProvider',
+      'botpress/utils': 'BotpressUtils',
+      'botpress/shared': 'BotpressShared'
     },
     resolveLoader: {
-      modules: ['node_modules', path.resolve(projectPath, './node_modules/module-builder/node_modules')]
+      modules: ['node_modules', path.resolve(__dirname, '../node_modules')]
     },
     resolve: {
+      alias: {
+        common: path.resolve(__dirname, '../../../out/bp/common')
+      },
+      modules: ['node_modules', path.resolve(__dirname, '../../../src/bp/ui-studio/node_modules')],
       extensions: ['.js', '.jsx', '.tsx', '.ts']
     },
     plugins: [new CleanWebpackPlugin()],
@@ -52,6 +59,7 @@ export function config(projectPath) {
           use: {
             loader: 'babel-loader',
             options: {
+              cwd: path.resolve(__dirname, '..'),
               presets: [['@babel/preset-env'], '@babel/preset-typescript', '@babel/preset-react'],
               plugins: [
                 ['@babel/plugin-proposal-decorators', { legacy: true }],
@@ -73,7 +81,7 @@ export function config(projectPath) {
               options: {
                 modules: true,
                 importLoaders: 1,
-                localIdentName: packageJson.name + '__[name]__[local]___[hash:base64:5]'
+                localIdentName: `${packageJson.name}__[name]__[local]___[hash:base64:5]`
               }
             },
             { loader: 'sass-loader' }
@@ -125,16 +133,16 @@ export function config(projectPath) {
 
   const webpackFile = path.join(projectPath, 'webpack.frontend.js')
   if (fs.existsSync(webpackFile)) {
-    debug('Webpack override found for frontend')
+    debug('Webpack override found for frontend', path.basename(projectPath))
     return require(webpackFile)({ full, lite })
   }
 
   return [full, lite]
 }
 
-function writeStats(err, stats, exitOnError = true) {
+function writeStats(err, stats, exitOnError = true, callback?, moduleName?: string) {
   if (err || stats.hasErrors()) {
-    error(stats.toString('minimal'))
+    error(stats.toString('minimal'), moduleName)
 
     if (exitOnError) {
       return process.exit(1)
@@ -142,17 +150,22 @@ function writeStats(err, stats, exitOnError = true) {
   }
 
   for (const child of stats.toJson().children) {
-    normal(`Generated frontend bundle (${child.time} ms)`)
+    normal(`Generated frontend bundle (${child.time} ms)`, moduleName)
   }
+
+  callback?.()
 }
 
 export function watch(projectPath: string) {
   const confs = config(projectPath)
   const compiler = webpack(confs)
-  compiler.watch({}, (err, stats) => writeStats(err, stats, false))
+  compiler.watch({}, (err, stats) => writeStats(err, stats, false, undefined, path.basename(projectPath)))
 }
 
-export function build(projectPath: string) {
+export async function build(projectPath: string): Promise<void> {
   const confs = config(projectPath)
-  webpack(confs, (err, stats) => writeStats(err, stats, true))
+
+  await new Promise(resolve => {
+    webpack(confs, (err, stats) => writeStats(err, stats, true, resolve, path.basename(projectPath)))
+  })
 }

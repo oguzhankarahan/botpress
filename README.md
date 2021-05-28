@@ -1,91 +1,42 @@
-<a href='http://botpress.io'><img src='.github/assets/train_bar.gif'></a>
+# [Botpress](https://botpress.com/?utm_source=github&utm_medium=organic&utm_campaign=botpress_repo&utm_term=readme) — The building blocks for building chatbots
 
-# [Botpress](https://botpress.io) — The open-source bot platform
+## What is Botpress ?
+Botpress is the standard developer stack to build, run and improve Conversational-AI applications. Powered by natural language understanding, a messaging API and a fully featured studio, Botpress allows developers around the globe to build remarkable chatbots without compromise.
+a
+<a href='https://botpress.com/?utm_source=github&utm_medium=organic&utm_campaign=botpress_repo&utm_term=readme'><img src='.github/assets/studio.png'></a>
 
-[![CodeBuild](https://codebuild.us-east-1.amazonaws.com/badges?uuid=eyJlbmNyeXB0ZWREYXRhIjoiNTZoU0wzRmRQd29iWTFqVjliUzlvN0gzUUtoN25QVHlHMUhWYkZCWHpPQ3ZKQzFOMFh6Wm5EcHkxQW5SUmJuTFpLSDJXdURDVzNtRjM5d1BaU2pNUHhJPSIsIml2UGFyYW1ldGVyU3BlYyI6Iitoa0RBM091SnlXNTJwK2MiLCJtYXRlcmlhbFNldFNlcmlhbCI6MX0%3D&branch=master)](https://console.aws.amazon.com/codesuite/codebuild/projects/botpress-ce-tests/history?region=us-east-1)
+**Out of the box, Botpress includes:**
 
-Botpress is an open-source all-in-one bot creation platform that provides all the tools you need to build, debug and deploy AI-based conversational assistants.
+- Administration panel to orchestrate and monitor your chatbots
+- Conversation Studio to design a conversation, manage content, code custom integration
+- Easy integration with messaging channels (Messenger, WhatsApp, Slack, Teams, Webchat, Telegram, SMS & more)
+- Natural Language Understanding
 
-- Developer-focused
-- Natural Language Understanding (NLU)
-- Built-in graphical interface & flow editor
-- Administration panel and bot management tools
-- Runs fully on-prem (control your data)
-- Support multiple messaging channels such as Webchat, SMS, Telegram, Facebook Messenger etc
+## Getting Started
 
----
+There are a few ways to get started with botpress :
 
-<a href='http://botpress.io'><img src='.github/assets/banner.gif'></a>
-
-##### Learn Botpress
-
-| 📖 [v12 **Documentation**](https://botpress.io/docs) | 🍿 [**YouTube Channel**](https://www.youtube.com/c/botpress) |
-| ---------------------------------------------------- | ------------------------------------------------------------ |
-
-
-##### Follow us
-
-|💬 [**Community**](https://help.botpress.io) | 🚀 [Blog](https://botpress.io/blog) | 🐥 [Twitter](https://twitter.com/getbotpress) |
-| ---------------------------------------- | ----------------------------------- | --------------------------------------------- |
-
-## [Community / Support / Forum](https://help.botpress.io)
-
-## Support the project ⭐
-
-If you feel awesome and want to support us in a small way, please consider starring and sharing the repo! This helps us get visability and allow the community to grow. 🙏
-
-<img alt="Botpress" width="250" src=".github/assets/star_us.gif">
-
-## Pre-built Binaries
-
-You can download the binaries [here](https://s3.amazonaws.com/botpress-binaries/index.html).
-
-## Building from source
-
-**Prerequisites**: Node 10.11 (you can use [nvm](https://github.com/creationix/nvm)) and Yarn.
-
-1. Run `yarn` to fetch node packages.
-1. Run `yarn build` to build the core, the UI and the modules.
-1. Run `yarn start` to start the server.
-
-### Building issues
-
-If you encounter errors when building modules (timeout, random errors, etc), try the following:
-
-1. Go in each module folder and type `yarn && yarn build`
+- Download the latest binary for your OS [here](https://botpress.com/download?utm_source=github&utm_medium=organic&utm_campaign=botpress_repo&utm_term=readme) and follow the [installation docs](https://botpress.com/docs/installation).
+- Use the official [Docker image](https://hub.docker.com/r/botpress/server) and follow the [hosting docs](https://botpress.com/docs/infrastructure/Docker)
+- Deploy it in the cloud using these shortlinks:
+  [![DigitalOcean](.github/do_button.svg)](https://marketplace.digitalocean.com/apps/botpress) [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy)
+- Run from sources, follow [build docs](https://botpress.com/docs/infrastructure/deploying)
 
 ## Documentation
 
-### Developer's Guide
+- [Main Documentation](https://botpress.com/docs/introduction)
+- [SDK Reference](https://botpress.com/reference/)
+- [Code Examples](https://github.com/botpress/botpress/tree/master/examples)
+- [Video Tutorials](https://www.youtube.com/c/botpress)
 
-We use [Docusaurus](https://docusaurus.io/en/) to create the Developer's Guide.
+## Community
 
-- To start the development server, run `yarn start:guide`
-- To generate the static files, run `yarn build:guide`. The generated files will appear under `/docs/guide/build`
-- To deploy a new version of the documentation, run `yarn run version <version here>`
-
-### SDK Reference
-
-We use [TypeDoc](https://github.com/TypeStrong/typedoc) to generate the SDK Reference directly from the source code.
-
-- Run `yarn build:reference` to generate the documentation. The static files will appear under `/docs/reference/public`.
-
-## Contributing
-
-Thank you for your interest in Botpress. Here are some of the many ways to contribute.
-
-- Check out our [contributing guide](/.github/CONTRIBUTING.md)
-- Check misspelling in our docs.
-- Look at our [code of conduct](/.github/CODE_OF_CONDUCT.md)
-- Engage with us on Social Media
-  - Follow us on [Twitter](https://twitter.com/getbotpress)
-- Answer and ask questions on the [Forum](https://help.botpress.io/)
-
-For starters, there are some open issues with the [first good issue][starter-label] tag which are ideal for starting to contribute. They are all relatively easy to get started with.
-
-Contributions to Botpress will be dual-licensed under AGPLv3 and the Botpress Proprietary License. This means that all contributors need to agree to the dual-license before their contributions can be accepted.
-
-Please follow the [Conventional Commits](https://conventionalcommits.org/) specs when doing commits. **Pull requests not respecting this commit style will be rejected.**
+- [Community Forum](https://forum.botpress.com/) - Get community support and discuss your challenges
+- [Issues](https://github.com/botpress/botpress/issues) - Report bug and file feature requests
+- [Blog](https://botpress.com/blog) - How to's, Case studies & Announcements
+- [Newsletter](https://botpress.activehosted.com/f/16) - Stay informed, subscribe to our news letter
+- [Contributring](/.github/CONTRIBUTING.md) - Start contributing to Botpress
+- [Partners](/.github/PARTNERS.md) - List of agencies who can help you with Botpress
 
 ## License
 
@@ -93,4 +44,4 @@ Botpress is dual-licensed under [AGPLv3](/licenses/LICENSE_AGPL3) and the [Botpr
 
 By default, any bot created with Botpress is licensed under AGPLv3, but you may change to the Botpress License from within your bot's web interface in a few clicks.
 
-For more information about how the dual-license works and why it works that way, please see the <a href="https://botpress.io/faq">FAQS</a>.
+For more information about how the dual-license works and why it works that way, please see the <a href="https://botpress.com/faq">FAQS</a>.

@@ -1,6 +1,6 @@
 import last from 'lodash/last'
 import takeRight from 'lodash/takeRight'
-import { action, observable } from 'mobx'
+import { action, computed, observable } from 'mobx'
 
 import constants from '../core/constants'
 
@@ -16,6 +16,12 @@ class ComposerStore {
   public message: string = ''
 
   @observable
+  public locked: boolean = false
+
+  @observable
+  public hidden: boolean = false
+
+  @observable
   private _sentHistory: string[] = []
 
   @observable
@@ -29,6 +35,11 @@ class ComposerStore {
     }
   }
 
+  @computed
+  get composerPlaceholder(): string {
+    return this.rootStore.config?.composerPlaceholder
+  }
+
   @action.bound
   updateMessage(msg: string) {
     this.message = msg
@@ -40,8 +51,8 @@ class ComposerStore {
       this._sentHistory.push(text)
       this._sentHistoryIndex = 0
 
-      if (window.BP_STORAGE && this.rootStore.config.enablePersistHistory) {
-        window.BP_STORAGE.set(
+      if (this.rootStore.config.enablePersistHistory) {
+        window.BP_STORAGE?.set(
           SENT_HISTORY_KEY,
           JSON.stringify(takeRight(this._sentHistory, constants.SENT_HISTORY_SIZE))
         )
@@ -65,6 +76,16 @@ class ComposerStore {
 
     this.updateMessage(this._sentHistory[newIndex])
     this._sentHistoryIndex = newIndex
+  }
+
+  @action.bound
+  setLocked(locked: boolean) {
+    this.locked = locked
+  }
+
+  @action.bound
+  setHidden(hidden: boolean) {
+    this.hidden = hidden
   }
 }
 

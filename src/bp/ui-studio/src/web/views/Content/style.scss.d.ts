@@ -2,9 +2,13 @@
 // Please do not change this file!
 interface CssExports {
   'cancel': string;
+  'centered': string;
   'content': string;
+  'contentListWrapper': string;
+  'imagePreview': string;
   'missingTranslation': string;
   'modal': string;
+  'tableWrapper': string;
 }
 declare var cssExports: CssExports;
 export = cssExports;

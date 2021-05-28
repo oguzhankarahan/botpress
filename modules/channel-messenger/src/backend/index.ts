@@ -5,7 +5,7 @@ import { MessengerService } from './messenger'
 
 let service: MessengerService
 
-const onServerStarted = async (bp: typeof sdk) => {
+const onServerReady = async (bp: typeof sdk) => {
   service = new MessengerService(bp)
   try {
     await service.initialize()
@@ -13,8 +13,6 @@ const onServerStarted = async (bp: typeof sdk) => {
     bp.logger.attachError(err).warn('Channel misconfigured')
   }
 }
-
-const onServerReady = (bp: typeof sdk) => {}
 
 const onBotMount = async (bp: typeof sdk, botId: string) => {
   await service.mountBot(botId)
@@ -31,7 +29,6 @@ const onModuleUnmount = async (bp: typeof sdk) => {
 
 const entryPoint: sdk.ModuleEntryPoint = {
   onServerReady,
-  onServerStarted,
   onBotMount,
   onBotUnmount,
   onModuleUnmount,

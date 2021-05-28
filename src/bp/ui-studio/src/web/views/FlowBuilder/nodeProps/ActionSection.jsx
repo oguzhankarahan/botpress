@@ -1,11 +1,17 @@
-import React, { Component, Fragment } from 'react'
-import _ from 'lodash'
+import {
+  Popover,
+  PopoverInteractionKind,
+  PopoverPosition
+} from '@blueprintjs/core'
+import { lang } from 'botpress/shared'
 import classnames from 'classnames'
+import _ from 'lodash'
+import React, { Component, Fragment } from 'react'
 
 import { Button } from 'react-bootstrap'
 
-import ActionModalForm from './ActionModalForm'
 import ActionItem from '../common/action'
+import ActionModalForm from './ActionModalForm'
 
 const style = require('./style.scss')
 
@@ -89,7 +95,7 @@ export default class ActionSection extends Component {
     return (
       <label>
         <input name="isGoing" type="checkbox" checked={checked} disabled={readOnly} onChange={changeChecked} />
-        {'  Wait for user message'}
+        {lang.tr('studio.flow.node.waitForUserMessage')}
       </label>
     )
   }
@@ -109,26 +115,28 @@ export default class ActionSection extends Component {
 
     return (
       <Fragment>
-        <div>
+        <div className={style.actionList}>
           {this.renderWait()}
           {items.map((item, i) => (
-            <ActionItem className={style.item} text={item} key={`${i}.${item}`}>
+            <Popover interactionKind={PopoverInteractionKind.HOVER} position={PopoverPosition.LEFT}>
+              <ActionItem className={style.item} text={item} key={`${i}.${item}`}>
+              </ActionItem>
               {!readOnly && (
                 <div className={style.actions}>
                   <a className="btn-edit" onClick={() => this.onEdit(i)}>
-                    Edit
+                    {lang.tr('edit')}
                   </a>
                   <a className="btn-remove" onClick={() => this.onRemoveAction(i)}>
-                    Remove
+                    {lang.tr('remove')}
                   </a>
                   <a className="btn-copy" onClick={() => this.onCopyAction(i)}>
-                    Copy
+                    {lang.tr('copy')}
                   </a>
                   {renderMoveUp(i)}
                   {renderMoveDown(i)}
                 </div>
               )}
-            </ActionItem>
+            </Popover>
           ))}
           {!readOnly && (
             <div className={style.actions}>

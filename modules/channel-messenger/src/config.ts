@@ -15,12 +15,14 @@ export interface Config {
    * This this in the GLOBAL config (same for all bots)
    * Your app's "App Secret"
    * Find this secret in your developers.facebook.com -> your app -> Settings -> Basic -> App Secret -> Show
+   * @default app_secret
    */
   appSecret: string
   /**
    * Set this in the GLOBAL config (same for all the bots)
    * The verify token, should be a random string unique to your server. This is a random (hard to guess) string of your choosing.
    * Docs: https://developers.facebook.com/docs/messenger-platform/getting-started/webhook-setup/#verify_webhook
+   * @default verify_token
    */
   verifyToken: string
   /**
@@ -39,8 +41,23 @@ export interface Config {
    * @default []
    */
   persistentMenu?: PersistentMenuItem[] | null
+
+  /**
+   * The duration of the authentication session when a user authenticate through this channel.
+   * @default 24h
+   */
+  chatUserAuthDuration: string
+
+  /**
+   * Allows to disable certain actions.
+   * Could be used to comply with some region's restrictions.
+   * Example: https://developers.facebook.com/blog/post/2020/12/04/upcoming-changes-messenger-api/
+   * @default []
+   */
+  disabledActions?: MessengerAction[]
 }
 
+export type MessengerAction = 'typing_on' | 'typing_off' | 'mark_seen'
 export interface PersistentMenuItem {
   locale: string
   composer_input_disabled?: boolean

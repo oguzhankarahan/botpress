@@ -1,47 +1,48 @@
 const ActionButton = require('./action_button')
 const Carousel = require('./carousel')
+const utils = require('./_utils')
 
 module.exports = {
   id: 'builtin_card',
   group: 'Built-in Messages',
-  title: 'Card',
+  title: 'card',
 
   jsonSchema: {
-    description: 'A card message with a title with optional subtitle, image and action buttons.',
+    description: 'module.builtin.types.card.description',
     type: 'object',
     required: ['title'],
     properties: {
       title: {
         type: 'string',
-        title: 'Title'
+        title: 'title'
       },
       subtitle: {
         type: 'string',
-        title: 'Subtitle'
+        title: 'subtitle'
       },
       image: {
         type: 'string',
-        $subtype: 'media',
+        $subtype: 'image',
         $filter: '.jpg, .png, .jpeg, .gif, .bmp, .tif, .tiff|image/*',
-        title: 'Image'
+        title: 'image'
       },
       actions: {
         type: 'array',
-        title: 'Action Buttons',
+        title: 'module.builtin.actionButton',
         items: ActionButton.jsonSchema
       }
     }
   },
 
-  uiSchema: {
-    title: {
-      'ui:widget': 'textarea'
-    },
-    subtitle: {
-      'ui:widget': 'textarea'
-    }
-  },
+  uiSchema: {},
 
   computePreviewText: formData => formData.title && `Card: ${formData.title}`,
-  renderElement: (data, channel) => Carousel.renderElement({ items: [data], ...data }, channel)
+  renderElement: (data, channel) => {
+    // These channels now use channel renderers
+    if (['telegram', 'twilio', 'slack', 'smooch', 'vonage', 'teams', 'messenger'].includes(channel)) {
+      return utils.extractPayload('card', data)
+    }
+
+    return Carousel.renderElement({ items: [data], ...data }, channel)
+  }
 }

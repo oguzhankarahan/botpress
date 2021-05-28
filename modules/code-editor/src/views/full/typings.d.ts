@@ -3,11 +3,16 @@ export interface StudioConnector {
   events: any
   /** An axios instance */
   axios: any
-  toast: any
   getModuleInjector: any
   loadModuleView: any
 }
 
 export interface FileFilters {
   filename?: string
+}
+
+declare global {
+  interface Window {
+    EXPERIMENTAL: boolean
+  }
 }

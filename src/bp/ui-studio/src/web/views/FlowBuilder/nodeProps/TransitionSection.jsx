@@ -1,6 +1,7 @@
-import React, { Component, Fragment } from 'react'
-import _ from 'lodash'
+import { lang } from 'botpress/shared'
 import classnames from 'classnames'
+import _ from 'lodash'
+import React, { Component, Fragment } from 'react'
 
 import { Button, Label } from 'react-bootstrap'
 
@@ -63,15 +64,15 @@ export default class TransitionSection extends Component {
 
     const renderType = i => {
       if (!i.node || i.node === '') {
-        return <Label bsStyle="danger">Missing Link</Label>
+        return <Label bsStyle="danger">{lang.tr('studio.flow.node.missingLink')}</Label>
       }
 
       if (i.node === 'END') {
-        return <Label bsStyle="warning">End</Label>
+        return <Label bsStyle="warning">{lang.tr('studio.flow.node.end')}</Label>
       }
 
       if (i.node === '#') {
-        return <Label bsStyle="warning">Return</Label>
+        return <Label bsStyle="warning">{lang.tr('studio.flow.node.return')}</Label>
       }
 
       if (i.node.includes('.flow.json')) {
@@ -85,18 +86,20 @@ export default class TransitionSection extends Component {
       <Fragment>
         <div>
           {items.map((item, i) => (
-            <ConditionItem className={style.item} condition={item} position={i} key={`${i}.${item.node || '-'}`}>
-              {renderType(item)}
+            <Fragment>
+              <ConditionItem className={style.item} condition={item} position={i} key={`${i}.${item.node || '-'}`}>
+                {renderType(item)}
+              </ConditionItem>
               {!readOnly && (
                 <div className={style.actions}>
-                  <a onClick={() => this.onEdit(i)}>Edit</a>
-                  <a onClick={() => this.onRemove(i)}>Remove</a>
-                  <a onClick={() => this.onCopyAction(i)}>Copy</a>
+                  <a onClick={() => this.onEdit(i)}>{lang.tr('edit')}</a>
+                  <a onClick={() => this.onRemove(i)}>{lang.tr('remove')}</a>
+                  <a onClick={() => this.onCopyAction(i)}>{lang.tr('copy')}</a>
                   {renderMoveUp(i)}
                   {renderMoveDown(i)}
                 </div>
               )}
-            </ConditionItem>
+            </Fragment>
           ))}
           {!readOnly && (
             <div className={style.actions}>

@@ -6,8 +6,11 @@ const path = require('path')
 const CopyWebpackPlugin = require('copy-webpack-plugin')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 const CleanWebpackPlugin = require('clean-webpack-plugin')
-const UglifyJSPlugin = require('uglifyjs-webpack-plugin')
+const TerserPlugin = require('terser-webpack-plugin')
+const HardSourceWebpackPlugin = require('hard-source-webpack-plugin')
+const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')
 const isProduction = process.env.NODE_ENV === 'production'
+const moment = require('moment')
 
 const webConfig = {
   cache: false,
@@ -15,8 +18,12 @@ const webConfig = {
   bail: true,
   devtool: process.argv.find(x => x.toLowerCase() === '--nomap') ? false : 'source-map',
   entry: {
-    web: './src/web/index.jsx',
-    lite: './src/web/lite.jsx'
+    web: './src/web/index.jsx'
+  },
+  node: {
+    net: 'empty',
+    tls: 'empty',
+    dns: 'empty'
   },
   output: {
     path: path.resolve(__dirname, './public/js'),
@@ -29,14 +36,14 @@ const webConfig = {
       '~': path.resolve(__dirname, './src/web'),
       DOCS: path.resolve(__dirname, '../../../docs/guide/docs'),
       common: path.resolve(__dirname, '../../../out/bp/common'),
+      'botpress/shared': 'ui-shared',
       'botpress/sdk': path.resolve(__dirname, '../sdk/botpress.d.ts')
     }
   },
   optimization: {
     minimizer: [
-      new UglifyJSPlugin({
-        sourceMap: true,
-        cache: true
+      new TerserPlugin({
+        sourceMap: true
       })
     ],
     splitChunks: {
@@ -66,13 +73,6 @@ const webConfig = {
       filename: '../index.html',
       chunks: ['commons', 'web']
     }),
-    new HtmlWebpackPlugin({
-      inject: true,
-      hash: true,
-      template: './src/web/lite.html',
-      filename: '../lite/index.html',
-      chunks: ['commons', 'lite']
-    }),
     new webpack.DefinePlugin({
       'process.env': {
         NODE_ENV: isProduction ? JSON.stringify('production') : JSON.stringify('development')
@@ -101,7 +101,11 @@ const webConfig = {
 
   module: {
     rules: [
-      { test: /\.tsx?$/, loader: 'ts-loader', exclude: /node_modules/ },
+      {
+        test: /\.tsx?$/,
+        loader: 'ts-loader',
+        exclude: /node_modules/
+      },
       {
         test: /\.md$/,
         use: [
@@ -112,14 +116,30 @@ const webConfig = {
       },
       {
         test: /\.jsx?$/i,
-        include: path.resolve(__dirname, 'src/web'),
+        include: [path.resolve(__dirname, 'src/web')],
         use: [
-          { loader: 'thread-loader' },
+          {
+            loader: 'thread-loader'
+          },
           {
             loader: 'babel-loader',
             options: {
-              presets: ['stage-3', ['env', { targets: { browsers: ['last 2 versions'] } }], 'react'],
-              plugins: ['transform-class-properties'],
+              presets: [
+                require.resolve('babel-preset-stage-3'),
+                [
+                  require.resolve('babel-preset-env'),
+                  {
+                    targets: {
+                      browsers: ['last 2 versions']
+                    }
+                  }
+                ],
+                require.resolve('babel-preset-react')
+              ],
+              plugins: [
+                require.resolve('babel-plugin-transform-class-properties'),
+                require.resolve('babel-plugin-transform-es2015-arrow-functions')
+              ],
               compact: true,
               babelrc: false,
               cacheDirectory: true
@@ -130,8 +150,12 @@ const webConfig = {
       {
         test: /\.styl$/,
         use: [
-          { loader: 'style-loader' },
-          { loader: 'css-modules-typescript-loader' },
+          {
+            loader: 'style-loader'
+          },
+          {
+            loader: 'css-modules-typescript-loader'
+          },
           {
             loader: 'css-loader',
             options: {
@@ -140,15 +164,23 @@ const webConfig = {
               localIdentName: '[name]__[local]___[hash:base64:5]'
             }
           },
-          { loader: 'postcss-loader' },
-          { loader: 'stylus-loader' }
+          {
+            loader: 'postcss-loader'
+          },
+          {
+            loader: 'stylus-loader'
+          }
         ]
       },
       {
         test: /\.scss$/,
         use: [
-          { loader: 'style-loader' },
-          { loader: 'css-modules-typescript-loader' },
+          {
+            loader: 'style-loader'
+          },
+          {
+            loader: 'css-modules-typescript-loader'
+          },
           {
             loader: 'css-loader',
             options: {
@@ -158,8 +190,12 @@ const webConfig = {
               localIdentName: '[name]__[local]___[hash:base64:5]'
             }
           },
-          { loader: 'postcss-loader' },
-          { loader: 'sass-loader' }
+          {
+            loader: 'postcss-loader'
+          },
+          {
+            loader: 'sass-loader'
+          }
         ]
       },
       {
@@ -168,10 +204,32 @@ const webConfig = {
       },
       {
         test: /\.woff|\.woff2|\.svg|.eot|\.ttf/,
-        use: [{ loader: 'file-loader', options: { name: '../fonts/[name].[ext]' } }]
+        use: [
+          {
+            loader: 'file-loader',
+            options: {
+              name: '../fonts/[name].[ext]'
+            }
+          }
+        ]
       }
     ]
   }
+}
+
+if (!isProduction) {
+  webConfig.plugins.push(
+    new HardSourceWebpackPlugin({
+      info: {
+        mode: 'test',
+        level: 'debug'
+      }
+    })
+  )
+}
+
+if (process.argv.find(x => x.toLowerCase() === '--analyze')) {
+  webConfig.plugins.push(new BundleAnalyzerPlugin())
 }
 
 const showNodeEnvWarning = () => {
@@ -184,11 +242,27 @@ const showNodeEnvWarning = () => {
 }
 
 const compiler = webpack(webConfig)
+
+compiler.hooks.done.tap('ExitCodePlugin', stats => {
+  const errors = stats.compilation.errors
+  if (errors && errors.length && process.argv.indexOf('--watch') === -1) {
+    for (const e of errors) {
+      console.error(e)
+      if (e.message) {
+        console.error(e.message)
+      }
+    }
+    console.error('Webpack build failed')
+    process.exit(1)
+  }
+})
+
 const postProcess = (err, stats) => {
   if (err) {
     throw err
   }
-  console.log(chalk.grey(stats.toString('minimal')))
+
+  console.log(`[${moment().format('HH:mm:ss')}] Studio ${chalk.grey(stats.toString('minimal'))}`)
 }
 
 if (process.argv.indexOf('--compile') !== -1) {
@@ -203,4 +277,6 @@ if (process.argv.indexOf('--compile') !== -1) {
   )
 }
 
-module.exports = { web: webConfig }
+module.exports = {
+  web: webConfig
+}

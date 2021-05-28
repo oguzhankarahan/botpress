@@ -1,6 +1,8 @@
 import { Logger } from 'botpress/sdk'
+import crypto from 'crypto'
 import globrex from 'globrex'
 import _ from 'lodash'
+import path from 'path'
 
 export type MockObject<T> = { T: T } & { readonly [key in keyof T]: jest.Mock }
 
@@ -17,7 +19,7 @@ export function createMockLogger(): Logger {
 export function createSpyObject<T>(): MockObject<T> {
   const obj = {}
   const handler: ProxyHandler<object> = {
-    get: function(obj, prop) {
+    get(obj, prop) {
       if (prop === 'T') {
         return proxy
       }
@@ -29,7 +31,10 @@ export function createSpyObject<T>(): MockObject<T> {
   return proxy as MockObject<T>
 }
 
-export async function expectAsync<T>(promise: Promise<T>, matcher: (obj: jest.Matchers<T>) => void): Promise<void> {
+export async function expectAsync<T>(
+  promise: Promise<T>,
+  matcher: (obj: jest.JestMatchersShape<jest.Matchers<void, T>, jest.Matchers<Promise<void>, T>>) => void
+): Promise<void> {
   try {
     const ret = await promise
     matcher(expect(ret))
@@ -65,7 +70,9 @@ export const getCacheKeyInMinutes = (minutes: number = 1) => Math.round(new Date
 /** Case-insensitive "startsWith" */
 export const startsWithI = (a: string, b: string) => a.toLowerCase().startsWith(b.toLowerCase())
 export const asBytes = (size: string) => {
-  if (typeof size === 'number') return size
+  if (typeof size === 'number') {
+    return size
+  }
 
   size = typeof size === 'string' ? size : '0'
 
@@ -78,26 +85,50 @@ export const asBytes = (size: string) => {
     return 0
   }
 
-  /**/ if (matches[2] === 'b') return Number(matches[1]) * Math.pow(1024, 0)
-  else if (matches[2] === 'kb') return Number(matches[1]) * Math.pow(1024, 1)
-  else if (matches[2] === 'mb') return Number(matches[1]) * Math.pow(1024, 2)
-  else if (matches[2] === 'gb') return Number(matches[1]) * Math.pow(1024, 3)
-  else if (matches[2] === 'tb') return Number(matches[1]) * Math.pow(1024, 4)
+  /**/ if (matches[2] === 'b') {
+    return Number(matches[1]) * Math.pow(1024, 0)
+  } else if (matches[2] === 'kb') {
+    return Number(matches[1]) * Math.pow(1024, 1)
+  } else if (matches[2] === 'mb') {
+    return Number(matches[1]) * Math.pow(1024, 2)
+  } else if (matches[2] === 'gb') {
+    return Number(matches[1]) * Math.pow(1024, 3)
+  } else if (matches[2] === 'tb') {
+    return Number(matches[1]) * Math.pow(1024, 4)
+  }
 
   return Number(matches[1])
-}
-
-export const bytesToString = (bytes: number): string => {
-  const units = ['bytes', 'kb', 'mb', 'gb', 'tb']
-  const power = Math.log2(bytes)
-  const unitNumber = Math.min(Math.floor(power / 10), 4)
-  const significand = bytes / Math.pow(2, unitNumber * 10)
-
-  return `${significand.toFixed(0)} ${units[unitNumber]}`
 }
 
 export function filterByGlobs<T>(array: T[], iteratee: (value: T) => string, globs: string[]): T[] {
   const rules: { regex: RegExp }[] = globs.map(g => globrex(g, { globstar: true }))
 
   return array.filter(x => _.every(rules, rule => !rule.regex.test(iteratee(x))))
+}
+
+export const calculateHash = (content: string) =>
+  crypto
+    .createHash('sha256')
+    .update(content)
+    .digest('hex')
+
+const regex = {
+  illegalFile: /[\/\?<>\\:\*\|"]/g,
+  illegalFolder: /[\?<>\\:\*\|"]/g,
+  control: /[\x00-\x1f\x80-\x9f]/g,
+  reserved: /^\.+$/
+}
+
+export const sanitize = (input: string, type?: 'file' | 'folder') => {
+  return input
+    .replace(regex.control, '')
+    .replace(regex.reserved, '')
+    .replace(type === 'folder' ? regex.illegalFolder : regex.illegalFile, '')
+}
+
+export const sanitizeFileName = (name: string): string => {
+  return name
+    .toLowerCase()
+    .replace(/\.json$/i, '')
+    .replace(/[\t\s]/gi, '-')
 }

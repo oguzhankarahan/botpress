@@ -56,4 +56,36 @@ export interface Config {
    * @default 20
    */
   maxMessagesHistory?: number
+  /**
+   * Security configurations
+   */
+  security: {
+    /**
+     * Weather or not to escape plain html payload
+     * @default false
+     */
+    escapeHTML: boolean
+  }
+  /**
+   * The duration of the authentication session when a user authenticate through this channel.
+   * @default 24h
+   */
+  chatUserAuthDuration: string
+
+  /**
+   * Path to an additional stylesheet. It will be applied on top of the default style
+   */
+  extraStylesheet: string
+
+  /**
+   * If true, Websocket is created when the Webchat is opened. Bot cannot be proactive.
+   * @default false
+   */
+  lazySocket: boolean
+
+  /**
+   * If true, chat will no longer play the notification sound for new messages.
+   * @default false
+   */
+  disableNotificationSound: boolean
 }

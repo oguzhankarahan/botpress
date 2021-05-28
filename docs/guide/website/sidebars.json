@@ -1,9 +1,10 @@
 {
   "docs": {
-    "Release Notes": ["releases/release-notes", "releases/migrate"],
-    "Getting Started": ["introduction", "installation", "quickstart", "updating", "troubleshoot"],
-    "Main Concepts": [
+    "Release Notes": ["releases/migrate"],
+    "Getting Started": ["introduction", "installation", "quickstart"],
+    "Building A Chatbot": [
       "main/overview",
+      "main/glossary",
       "main/content",
       "main/dialog",
       "main/code",
@@ -12,21 +13,6 @@
       "main/nlu",
       "main/emulator"
     ],
-    "Advanced Guides": [
-      "advanced/debug",
-      "advanced/configuration",
-      "advanced/authentication",
-      "advanced/i18n",
-      "advanced/custom-module",
-      "advanced/analytics",
-      "advanced/performances",
-      "advanced/hosting",
-      "advanced/versions",
-      "advanced/pipelines",
-      "advanced/development-pipeline",
-      "advanced/cluster",
-      "advanced/monitoring"
-    ],
     "Channels": [
       "channels/web",
       "channels/messenger",
@@ -34,26 +20,56 @@
       "channels/teams",
       "channels/converse",
       "channels/slack",
+      "channels/smooch",
       "channels/faq"
     ],
-    "Tutorials": [
-      "tutorials/cluster-digital-ocean",
+    "Deployment And Infrastructure": [
+      "infrastructure/deploying",
+      "infrastructure/hosting",
+      "infrastructure/database",
+      "infrastructure/aws",
+      "infrastructure/docker",
+      "infrastructure/performances",
+      "infrastructure/pipeline",
+      "infrastructure/versions",
+      "infrastructure/cluster",
+      "infrastructure/digital-ocean"
+    ],
+    "Managing Bots & Users": [
+      "managing/rbac",
+      "managing/authentication",
+      "managing/monitoring",
+      "managing/proactive",
+      "managing/hitl"
+    ],
+    "Improving Your Chatbot": [
       "tutorials/intent-matching",
-      "tutorials/proactive",
+      "tutorials/carousel-postback",
       "tutorials/skill-slot",
       "tutorials/skill-call-api",
+      "tutorials/skill-email",
       "tutorials/external-api",
       "tutorials/shortlinks",
       "tutorials/existing-backend",
-      "tutorials/database",
       "tutorials/timeouts",
-      "tutorials/hitl",
       "tutorials/jump-to",
       "tutorials/interbot",
       "tutorials/contextual-faq",
       "tutorials/chat-3rd-party-OAuth",
-      "tutorials/listen-file-changes"
+      "tutorials/listen-file-changes",
+      "tutorials/3rd-party-NLU",
+      "tutorials/uipath",
+      "tutorials/azure-oauth2",
+      "tutorials/google-oauth2",
+      "tutorials/github-oauth2"
     ],
-    "Pro Edition": ["pro/about-pro", "pro/licensing", "pro/rbac"]
+    "Pro Edition": ["pro/about-pro", "pro/licensing", "pro/i18n"],
+    "Advanced Guides": [
+      "advanced/debug",
+      "advanced/authentication",
+      "advanced/configuration",
+      "advanced/custom-module",
+      "advanced/development-pipeline"
+    ]
   }
 }

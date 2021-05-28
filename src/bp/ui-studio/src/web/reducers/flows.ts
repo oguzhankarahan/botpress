@@ -1,3 +1,4 @@
+import { FlowNode, IO } from 'botpress/sdk'
 import { FlowView } from 'common/typings'
 import _ from 'lodash'
 import reduceReducers from 'reduce-reducers'
@@ -6,7 +7,7 @@ import {
   clearErrorSaveFlows,
   clearFlowMutex,
   closeFlowNodeProps,
-  copyFlowNode,
+  copyFlowNodes,
   copyFlowNodeElement,
   errorSaveFlows,
   handleFlowEditorRedo,
@@ -30,6 +31,7 @@ import {
   requestUpdateFlow,
   requestUpdateFlowNode,
   requestUpdateSkill,
+  setDebuggerEvent,
   setDiagramAction,
   switchFlow,
   switchFlowNode,
@@ -38,15 +40,20 @@ import {
 import { hashCode, prettyId } from '~/util'
 
 export interface FlowReducer {
-  currentFlow: FlowView | undefined
+  currentFlow?: string
   showFlowNodeProps: boolean
   dirtyFlows: string[]
-  errorSavingFlows: any
+  errorSavingFlows?: { status: number; message: string }
   flowsByName: _.Dictionary<FlowView>
+  currentDiagramAction: string
+  buffer: { nodes?: FlowNode[] }
+  debuggerEvent?: IO.IncomingEvent
 }
 
 const MAX_UNDO_STACK_SIZE = 25
 const MIN_HISTORY_RECORD_INTERVAL = 500
+
+const defaultTransition = { condition: 'true', node: '' }
 
 const defaultState = {
   flowsByName: {},
@@ -58,8 +65,7 @@ const defaultState = {
   currentSnapshot: null,
   undoStack: [],
   redoStack: [],
-  nodeInBuffer: null, // TODO: move it to buffer.node
-  buffer: { action: null, transition: null },
+  buffer: { action: null, transition: null, nodes: null },
   flowProblems: [],
   errorSavingFlows: undefined
 }
@@ -203,7 +209,8 @@ const doRenameFlow = ({ currentName, newName, flows }) =>
 
     if (f.nodes) {
       let json = JSON.stringify(f.nodes)
-      json = json.replace(currentName, newName)
+      const regex = new RegExp(currentName, 'g')
+      json = json.replace(regex, newName)
       f.nodes = JSON.parse(json)
     }
 
@@ -219,25 +226,58 @@ const doDeleteFlow = ({ name, flowsByName }) => {
   return doRenameFlow({ currentName: name, newName: '', flows })
 }
 
-const doCreateNewFlow = name => ({
-  version: '0.1',
-  name: name,
-  location: name,
-  startNode: 'entry',
-  catchAll: {},
-  links: [],
-  nodes: [
+const doCreateNewFlow = name => {
+  const nodes = [
     {
       id: prettyId(),
       name: 'entry',
       onEnter: [],
       onReceive: null,
-      next: [],
+      next: [defaultTransition],
+      type: 'standard',
       x: 100,
       y: 100
     }
   ]
-})
+
+  if (window.USE_ONEFLOW) {
+    nodes.push(
+      {
+        id: prettyId(),
+        name: 'success',
+        onEnter: [],
+        onReceive: null,
+        next: [],
+        type: 'success',
+        x: 1000,
+        y: 100
+      },
+      {
+        id: prettyId(),
+        name: 'failure',
+        onEnter: [],
+        onReceive: null,
+        next: [],
+        type: 'failure',
+        x: 1000,
+        y: 200
+      }
+    )
+  }
+
+  return {
+    version: '0.1',
+    name,
+    location: name,
+    label: undefined,
+    description: '',
+    startNode: 'entry',
+    catchAll: {},
+    links: [],
+    triggers: [], // TODO: NDU Change to be a node instead
+    nodes
+  }
+}
 
 function isActualCreate(state, modification): boolean {
   return !_.keys(state.flowsByName).includes(modification.name)
@@ -321,7 +361,7 @@ let reducer = handleActions(
       }
     }),
 
-    [updateFlowProblems]: (state, { payload }) => ({
+    [updateFlowProblems as any]: (state, { payload }) => ({
       ...state,
       flowProblems: payload
     }),
@@ -333,7 +373,9 @@ let reducer = handleActions(
 
     [receiveFlows]: (state, { payload }) => {
       const flows = _.keys(payload).filter(key => !payload[key].skillData)
-      const defaultFlow = _.keys(payload).includes('main.flow.json') ? 'main.flow.json' : _.first(flows)
+      const newFlow = _.keys(payload).includes('Built-In/welcome.flow.json') && 'Built-In/welcome.flow.json'
+      const defaultFlow = newFlow || (_.keys(payload).includes('main.flow.json') ? 'main.flow.json' : _.first(flows))
+
       const newState = {
         ...state,
         fetchingFlows: false,
@@ -356,27 +398,27 @@ let reducer = handleActions(
       errorSavingFlows: payload
     }),
 
-    [clearErrorSaveFlows]: state => ({
+    [clearErrorSaveFlows as any]: state => ({
       ...state,
       errorSavingFlows: undefined
     }),
 
-    [switchFlowNode]: (state, { payload }) => ({
+    [switchFlowNode as any]: (state, { payload }) => ({
       ...state,
       currentFlowNode: payload
     }),
 
-    [openFlowNodeProps]: state => ({
+    [openFlowNodeProps as any]: state => ({
       ...state,
       showFlowNodeProps: true
     }),
 
-    [closeFlowNodeProps]: state => ({
+    [closeFlowNodeProps as any]: state => ({
       ...state,
       showFlowNodeProps: false
     }),
 
-    [switchFlow]: (state, { payload }) => {
+    [switchFlow as any]: (state, { payload }) => {
       if (state.currentFlow === payload) {
         return state
       }
@@ -388,7 +430,7 @@ let reducer = handleActions(
       }
     },
 
-    [setDiagramAction]: (state, { payload }) => ({
+    [setDiagramAction as any]: (state, { payload }) => ({
       ...state,
       currentDiagramAction: payload
     }),
@@ -489,7 +531,7 @@ reducer = reduceReducers(
         })
 
         const newNode = {
-          id: 'skill-' + flowRandomId,
+          id: `skill-${flowRandomId}`,
           type: 'skill-call',
           skill: skillId,
           name: `${skillId}-${flowRandomId}`,
@@ -536,9 +578,13 @@ reducer = reduceReducers(
           return {
             ...node,
             next: payload.transitions.map(transition => {
-              const prevTransition = node.next.find(({ condition }) => condition === transition.condition)
+              const prevTransition = node.next.find(
+                ({ condition, caption }) => condition === transition.condition || caption === transition.caption
+              )
+
               return { ...transition, node: (prevTransition || {}).node || '' }
-            })
+            }),
+            lastModified: new Date()
           }
         })
 
@@ -549,7 +595,7 @@ reducer = reduceReducers(
             [payload.editFlowName]: modifiedFlow,
             [state.currentFlow]: {
               ...state.flowsByName[state.currentFlow],
-              nodes: nodes
+              nodes
             }
           }
         }
@@ -563,7 +609,7 @@ reducer = reduceReducers(
             ...state.flowsByName[state.currentFlow],
             nodes: [
               ...state.flowsByName[state.currentFlow].nodes,
-              _.merge(state.nodeInBuffer, _.pick(payload, ['x', 'y']))
+              _.merge(state.buffer.nodes, _.pick(payload, ['x', 'y']))
             ]
           }
         }
@@ -630,7 +676,7 @@ reducer = reduceReducers(
 
       [requestRemoveFlowNode]: (state, { payload }) => {
         const flowsToRemove = []
-        const nodeToRemove = _.find(state.flowsByName[state.currentFlow].nodes, { id: payload })
+        const nodeToRemove = _.find(state.flowsByName[state.currentFlow].nodes, { id: payload?.id })
 
         if (nodeToRemove.type === 'skill-call') {
           if (findNodesThatReferenceFlow(state, nodeToRemove.flow).length <= 1) {
@@ -645,42 +691,79 @@ reducer = reduceReducers(
             ..._.omit(state.flowsByName, flowsToRemove),
             [state.currentFlow]: {
               ...state.flowsByName[state.currentFlow],
-              nodes: state.flowsByName[state.currentFlow].nodes.filter(node => node.id !== payload)
+              nodes: state.flowsByName[state.currentFlow].nodes.filter(node => node.id !== payload.id)
             }
           }
         }
       },
 
-      [copyFlowNode]: state => {
-        const node = _.find(state.flowsByName[state.currentFlow].nodes, { id: state.currentFlowNode })
-        if (!node) {
+      [copyFlowNodes as any]: (state, { payload }) => {
+        const nodes = payload
+          ?.map(nodeId => _.find(state.flowsByName[state.currentFlow].nodes, { id: nodeId }))
+          .filter(node => node)
+        if (!nodes || !nodes.length) {
           return state
         }
         return {
           ...state,
-          nodeInBuffer: { ...node, next: node.next.map(item => ({ ...item, node: '' })) }
+          buffer: { ...state.buffer, nodes }
         }
       },
 
       [requestPasteFlowNode]: (state, { payload: { x, y } }) => {
+        if (!state.buffer.nodes?.length) {
+          return state
+        }
+
         const currentFlow = state.flowsByName[state.currentFlow]
-        const newNodeId = prettyId()
-        const name = copyName(currentFlow.nodes.map(({ name }) => name), state.nodeInBuffer.name)
+        const siblingNames = currentFlow.nodes.map(({ name }) => name)
+        const newNodes = _.cloneDeep(state.buffer.nodes).map(node => {
+          const newNodeId = prettyId()
+          const newName = copyName(siblingNames, node.name)
+          return { ...node, id: newNodeId, newName, lastModified: new Date() }
+        })
+
+        // Calculate x,y center position from multiple nodes
+        const xCenter = _.reduce(newNodes, (sum, elem) => sum + elem.x, 0) / newNodes.length
+        const yCenter = _.reduce(newNodes, (sum, elem) => sum + elem.y, 0) / newNodes.length
+
+        newNodes.forEach(node => {
+          // Recalculate position to fit the new flow and cursor position
+          node.x = node.x - xCenter + x
+          node.y = node.y - yCenter + y
+
+          // Migrate transitions
+          if (node.next) {
+            for (const transition of node.next) {
+              const node = _.find(newNodes, { name: transition?.node })
+              transition.node = node ? node.newName : ''
+            }
+          }
+        })
+
+        // Migrate node name now that all transitions have been migrated
+        newNodes.forEach(node => {
+          node.name = node.newName
+          delete node.newName
+        })
+
         return {
           ...state,
-          currentFlowNode: newNodeId,
+          currentFlowNode: newNodes[0].id,
           flowsByName: {
             ...state.flowsByName,
             [state.currentFlow]: {
               ...currentFlow,
-              nodes: [
-                ...currentFlow.nodes,
-                { ...state.nodeInBuffer, id: newNodeId, name, lastModified: new Date(), x, y }
-              ]
+              nodes: [...currentFlow.nodes, ...newNodes]
             }
           }
         }
       },
+
+      [setDebuggerEvent]: (state, { payload }) => ({
+        ...state,
+        debuggerEvent: payload
+      }),
 
       [copyFlowNodeElement]: (state, { payload }) => ({
         ...state,

@@ -1,7 +1,8 @@
-import React, { Component } from 'react'
 import classnames from 'classnames'
+import React, { Component } from 'react'
 
 const style = require('./style.scss')
+const KEY_A = 65
 
 export default class EditableInput extends Component {
   constructor(props) {
@@ -13,9 +14,12 @@ export default class EditableInput extends Component {
 
   componentDidMount() {
     this.props.onMount && this.props.onMount(this.input)
+    if (this.props.shouldFocus) {
+      this.input.focus()
+    }
   }
 
-  componentWillReceiveProps(nextProps) {
+  UNSAFE_componentWillReceiveProps(nextProps) {
     this.setState({ value: nextProps.value || nextProps.defaultValue })
   }
 
@@ -29,6 +33,10 @@ export default class EditableInput extends Component {
   }
 
   onKeyDown = event => {
+    if ((event.ctrlKey || event.metaKey) && event.keyCode === KEY_A) {
+      event.target.select()
+    }
+
     if (event.keyCode === 13) {
       // Enter
       event.target.blur()

@@ -1,6 +1,5 @@
 import axios from 'axios'
 import React from 'react'
-import { toast } from 'react-toastify'
 import InjectedComponent from '~/components/Injected'
 import EventBus from '~/util/EventBus'
 
@@ -11,6 +10,8 @@ interface Props {
   onNotFound?: any
   extraProps?: any
   contentLang?: string
+  defaultLanguage?: string
+  languages?: string[]
 }
 
 interface State {
@@ -96,7 +97,7 @@ Component "${componentName}" doesn't exist for module "${moduleName}"
 There was a breaking change in how module views are handled in Botpress 11.6
 Web bundles and liteViews were replaced by a more standardized method.
 
-Please check our migration guide here: https://botpress.io/docs/developers/migrate/`),
+Please check our migration guide here: https://botpress.com/docs/developers/migrate/`),
         moduleComponent: null
       })
     } else {
@@ -113,7 +114,7 @@ Please check our migration guide here: https://botpress.io/docs/developers/migra
     this._isMounted = false
   }
 
-  componentWillReceiveProps(nextProps) {
+  UNSAFE_componentWillReceiveProps(nextProps) {
     this.loadModule(nextProps.moduleName, nextProps.componentName)
   }
 
@@ -121,7 +122,7 @@ Please check our migration guide here: https://botpress.io/docs/developers/migra
     const { moduleComponent } = this.state
 
     if (this.state.error) {
-      console.log('Error rendering plugin', this.state.error)
+      console.error('Error rendering plugin', this.state.error)
       return (this.props.onNotFound && this.props.onNotFound(this.state.error)) || null
     }
 
@@ -132,7 +133,6 @@ Please check our migration guide here: https://botpress.io/docs/developers/migra
     const bp = {
       events: EventBus.default,
       axios: axios.create({ baseURL: window.BOT_API_PATH }),
-      toast,
       getModuleInjector: () => InjectedModuleView,
       loadModuleView: this.loadModuleView
     }
@@ -145,6 +145,8 @@ Please check our migration guide here: https://botpress.io/docs/developers/migra
         component={moduleComponent}
         name={this.props.moduleName}
         contentLang={this.props.contentLang}
+        defaultLanguage={this.props.defaultLanguage}
+        languages={this.props.languages}
         bp={bp}
         {...extraProps}
       />

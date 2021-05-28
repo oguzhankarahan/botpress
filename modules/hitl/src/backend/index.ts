@@ -2,6 +2,9 @@ import 'bluebird-global'
 import * as sdk from 'botpress/sdk'
 import _ from 'lodash'
 
+import en from '../translations/en.json'
+import fr from '../translations/fr.json'
+
 import api from './api'
 import HitlDb from './db'
 import setup from './setup'
@@ -33,12 +36,13 @@ const entryPoint: sdk.ModuleEntryPoint = {
   onServerStarted,
   onServerReady,
   onModuleUnmount,
+  translations: { en, fr },
   definition: {
     name: 'hitl',
     menuIcon: 'feedback',
     menuText: 'HITL',
     fullName: 'Human In The Loop',
-    homepage: 'https://botpress.io'
+    homepage: 'https://botpress.com'
   }
 }
 

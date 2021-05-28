@@ -5,8 +5,10 @@ interface CssExports {
   'condition': string;
   'defaultValue': string;
   'editableInput': string;
+  'extraItems': string;
   'fn': string;
   'icon': string;
+  'imagePreview': string;
   'missingTranslation': string;
   'msg': string;
   'name': string;

@@ -13,7 +13,7 @@ const INTENT_PREFIX = 'intent:'
 const validateChoice = async data => {
   let choice = undefined
   const config = await bp.config.getModuleConfigForBot('basic-skills', event.botId)
-  const nb = _.get(event.preview.match(/^[#).!]?([\d]{1,2})[#).!]?$/), '[1]')
+  const nb = _.get(event.preview && event.preview.match(/^[#).!]?([\d]{1,2})[#).!]?$/), '[1]')
 
   if (config.matchNumbers && nb) {
     const index = parseInt(nb) - 1
@@ -31,21 +31,32 @@ const validateChoice = async data => {
   }
 
   if (!choice) {
+    const lcstr = value => (typeof value === 'string' ? value.toLowerCase() : '')
+    const preview = lcstr(event.preview)
+    const userText = lcstr(event.payload && event.payload.text)
+    const choiceValue = lcstr(event.payload && event.payload.payload)
     choice = _.findKey(data.keywords, keywords =>
-      _.some(
-        keywords || [],
-        k =>
-          _.includes((event.preview || '').toLowerCase(), (k || '').toLowerCase()) ||
-          (event.payload && _.includes(_.get(event, 'payload.text', '').toLowerCase(), (k || '').toLowerCase()))
-      )
+      _.some(keywords || [], k => {
+        const keyword = lcstr(k)
+        return preview === keyword || userText === keyword || choiceValue === keyword
+      })
     )
+    if (!choice) {
+      choice = _.findKey(data.keywords, keywords =>
+        _.some(keywords || [], k => {
+          const keyword = lcstr(k)
+          return preview.includes(keyword) || userText.includes(keyword) || choiceValue.includes(keyword)
+        })
+      )
+    }
   }
 
+  const keySuffix = args.randomId ? `-${args.randomId}` : ''
   if (choice) {
-    temp['skill-choice-valid'] = true
-    temp['skill-choice-ret'] = choice
+    temp[`skill-choice-valid${keySuffix}`] = true
+    temp[`skill-choice-ret${keySuffix}`] = choice
   } else {
-    temp['skill-choice-valid'] = false
+    temp[`skill-choice-valid${keySuffix}`] = false
   }
 }
 

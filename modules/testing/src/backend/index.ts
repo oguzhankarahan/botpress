@@ -1,14 +1,15 @@
 import * as sdk from 'botpress/sdk'
 import _ from 'lodash'
 
-import api from './api'
+import en from '../translations/en.json'
+import fr from '../translations/fr.json'
 
+import api from './api'
 import { Testing } from './testing'
 import { TestByBot } from './typings'
 
 const testByBot: TestByBot = {}
 
-const onServerStarted = async (bp: typeof sdk) => {}
 const onServerReady = async (bp: typeof sdk) => {
   await api(bp, testByBot)
 }
@@ -26,18 +27,18 @@ const onModuleUnmount = async (bp: typeof sdk) => {
 }
 
 const entryPoint: sdk.ModuleEntryPoint = {
-  onServerStarted,
   onServerReady,
   onModuleUnmount,
   onBotMount,
   onBotUnmount,
+  translations: { en, fr },
   definition: {
     name: 'testing',
-    menuIcon: 'polymer',
+    menuIcon: 'record',
     menuText: 'Testing',
     noInterface: false,
     fullName: 'Testing',
-    homepage: 'https://botpress.io',
+    homepage: 'https://botpress.com',
     experimental: true
   }
 }

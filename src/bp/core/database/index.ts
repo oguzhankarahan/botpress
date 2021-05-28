@@ -1,21 +1,20 @@
-import { Logger } from 'botpress/sdk'
-import { KnexExtension } from 'common/knex'
+import { KnexExtended, Logger } from 'botpress/sdk'
 import { TYPES } from 'core/types'
-import fs from 'fs'
+import { mkdirpSync } from 'fs-extra'
 import { inject, injectable, tagged } from 'inversify'
 import Knex from 'knex'
 import _ from 'lodash'
 import path from 'path'
 
+import AllTables from './database-tables'
 import { patchKnex } from './helpers'
 import { Table } from './interfaces'
-import AllTables from './tables'
 
 export type DatabaseType = 'postgres' | 'sqlite'
 
 @injectable()
 export default class Database {
-  knex!: Knex & KnexExtension
+  knex!: KnexExtended
 
   private tables: Table[] = []
 
@@ -44,27 +43,59 @@ export default class Database {
     await Promise.mapSeries(AllTables, async Tbl => {
       const table = new Tbl(this.knex!)
       if (this.knex.isLite) {
-        await this.knex.raw(`PRAGMA foreign_keys = OFF;`)
+        await this.knex.raw('PRAGMA foreign_keys = OFF;')
         await this.knex.raw(`DROP TABLE IF EXISTS "${table.name}";`)
-        await this.knex.raw(`PRAGMA foreign_keys = ON;`)
+        await this.knex.raw('PRAGMA foreign_keys = ON;')
       } else {
         await this.knex.raw(`DROP TABLE IF EXISTS "${table.name}" CASCADE;`)
       }
     })
   }
 
-  async initialize(databaseType: DatabaseType, databaseUrl?: string) {
+  async initialize(databaseType?: DatabaseType, databaseUrl?: string) {
+    const logger = this.logger
+    const { DATABASE_URL, DATABASE_POOL } = process.env
+
+    let poolOptions = {
+      log: message => logger.warn(`[pool] ${message}`)
+    }
+
+    try {
+      const customPoolOptions = DATABASE_POOL ? JSON.parse(DATABASE_POOL) : {}
+      poolOptions = { ...poolOptions, ...customPoolOptions }
+    } catch (err) {
+      this.logger.warn('Database pool option is not valid json')
+    }
+
+    if (DATABASE_URL) {
+      if (!databaseType) {
+        databaseType = DATABASE_URL.toLowerCase().startsWith('postgres') ? 'postgres' : 'sqlite'
+      }
+      if (!databaseUrl) {
+        databaseUrl = DATABASE_URL
+      }
+    }
+
     const config: Knex.Config = {
-      useNullAsDefault: true
+      useNullAsDefault: true,
+      log: {
+        error: message => logger.error(`[knex] ${message}`),
+        warn: message => logger.warn(`[knex] ${message}`),
+        debug: message => logger.debug(`[knex] ${message}`)
+      }
     }
 
     if (databaseType === 'postgres') {
+      const searchPath = (process.env.DATABASE_PG_SEARCH_PATH || 'public').split(',')
       Object.assign(config, {
         client: 'pg',
-        connection: databaseUrl
+        connection: databaseUrl,
+        pool: poolOptions,
+        searchPath
       })
     } else {
       const dbLocation = databaseUrl ? databaseUrl : `${process.PROJECT_LOCATION}/data/storage/core.sqlite`
+      mkdirpSync(path.dirname(dbLocation))
 
       Object.assign(config, {
         client: 'sqlite3',
@@ -72,12 +103,13 @@ export default class Database {
         pool: {
           afterCreate: (conn, cb) => {
             conn.run('PRAGMA foreign_keys = ON', cb)
-          }
+          },
+          ...poolOptions
         }
       })
     }
 
-    this.knex = patchKnex(await Knex(config))
+    this.knex = patchKnex(Knex(config))
 
     await this.bootstrap()
   }

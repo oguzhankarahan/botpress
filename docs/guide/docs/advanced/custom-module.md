@@ -103,7 +103,7 @@ const entryPoint: sdk.ModuleEntryPoint = {
     menuIcon: 'some-icon',
     menuText: '',
     fullName: 'My Module',
-    homepage: 'https://botpress.io',
+    homepage: 'https://botpress.com',
     noInterface: false,
     plugins: []
   }
@@ -140,7 +140,7 @@ const onServerReady = async (bp: SDK) => {
 
 ### onBotMount && onBotUnmount
 
-These methods are called everytime a bot is started or stopped (either when starting Botpress or when creating or deleting a bot).
+These methods are called every time a bot is started or stopped (either when starting Botpress or when creating or deleting a bot).
 
 Example:
 
@@ -202,7 +202,7 @@ const botTemplates: sdk.BotTemplate[] = [
 
 The definition is used by Botpress to setup your module.
 
-Please refer to the [API Reference](https://botpress.io/reference/) for informations on the possible options
+Please refer to the [API Reference](https://botpress.com/reference/) for information on the possible options
 
 The only way to communicate with modules (or between them) is by using the API endpoint.
 All modules are isolated and receives their own instance of `bp`
@@ -214,7 +214,7 @@ All modules are isolated and receives their own instance of `bp`
 
 ### Consuming API externally or from another module
 
-The Botpress SDK exposes a method to get the axios headers for a request. It will automatically sets the base URL for the request, and will set the required headers to communicate with the specific bot. This method is `bp.http.getAxiosConfigForBot('bot123')`
+The Botpress SDK exposes a method to get the axios headers for a request. It will automatically sets the base URL for the request, and will set the required headers to communicate with the specific bot. This method is `bp.http.getAxiosConfigForBot('bot123'): Promise<AxiosRequestConfig>`
 
 The method also accepts a second parameter with additional options. Right now, the only available option is `localUrl`. When set to true, the module will communicate with the local url instead of the external one. Ex: `bp.http.getAxiosConfigForBot('bot123', { localUrl: true })`
 
@@ -222,7 +222,7 @@ Once you have this, you simply have to call the axios method of your choice, and
 
 ```js
 extractNluContent: async () => {
-  const axiosConfig = bp.http.getAxiosConfigForBot(event.botId)
+  const axiosConfig = await bp.http.getAxiosConfigForBot(event.botId)
   const text = event.payload.text
   const data = await axios.post(`/mod/nlu/extract`, { text }, axiosConfig)
 }
@@ -485,7 +485,7 @@ const entryPoint: sdk.ModuleEntryPoint = {
 
 ## Register Actions
 
-Modules can register new actions that will be available on the flow editor. Please check out the [Custom Code](../main/code) section for more informations about Actions.
+Modules can register new actions that will be available on the flow editor. Please check out the [Custom Code](../main/code) section for more information about Actions.
 Those actions must be deployed to the `data/global/actions` folder to be recognized by Botpress. Here is how to do that:
 
 1. Create a folder named `actions` in `src`
@@ -498,3 +498,17 @@ They are then accessible by the name `$MY_MODULE/$MY_ACTION` in any node or skil
 If your action requires external dependencies, you must add them on your module's `package.json` as dependencies. When the VM is initialized, we redirect `require` requests to the node_modules of its parent module.
 
 > Many dependencies are already included with Botpress and do not need to be added to your package (ex: lodash, axios, etc... )
+
+## module-builder Docker image
+
+We provide a Docker image that can be used to compile your custom module. This is useful in CI/CD situations, where your pipeline will checkout your Custom Module's source code, and the Docker container will spit out a compiled `.tgz` file.
+
+## Instructions
+
+In the instructions beloew, replace `vX_X_X` by the latest version of the Docker image available on Docker Hub:
+
+```
+docker run -v `pwd`/your-custom-module:/botpress/modules/your-custom-module botpress/module-builder:vX_X_X sh -c 'cd modules/your-custom-module && yarn && yarn build && yarn package'
+```
+
+The compiled module will be availble in the directory you mounted as a `your-custom-module.tgz` file.

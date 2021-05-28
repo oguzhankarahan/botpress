@@ -1,15 +1,29 @@
-import { Classes, ContextMenu, Icon, ITreeNode, Menu, MenuDivider, MenuItem, Tooltip, Tree } from '@blueprintjs/core'
+import {
+  Classes,
+  ContextMenu,
+  Icon,
+  ITreeNode,
+  Menu,
+  MenuDivider,
+  MenuItem,
+  Position,
+  Tooltip,
+  Tree
+} from '@blueprintjs/core'
+import { lang } from 'botpress/shared'
 import { observe } from 'mobx'
 import { inject, observer } from 'mobx-react'
 import React from 'react'
 import ReactDOM from 'react-dom'
 
 import { EditableFile } from '../../backend/typings'
+import { BOT_SCOPED_HOOKS } from '../../typings/hooks'
 
 import { RootStore, StoreDef } from './store'
 import { EditorStore } from './store/editor'
-import { buildTree } from './utils/tree'
+import style from './style.scss'
 import { TreeNodeRenameInput } from './TreeNodeRenameInput'
+import { buildTree, EXAMPLE_FOLDER_LABEL, FOLDER_EXAMPLE, FOLDER_ICON } from './utils/tree'
 
 class FileNavigator extends React.Component<Props, State> {
   state = {
@@ -18,18 +32,25 @@ class FileNavigator extends React.Component<Props, State> {
   }
 
   treeRef: React.RefObject<Tree<NodeData>>
-  constructor(props) {
+  constructor(props: Props) {
     super(props)
     this.treeRef = React.createRef()
   }
 
   componentDidMount() {
     observe(this.props.filters, 'filename', this.refreshNodes, true)
+    observe(this.props.editor, 'fileChangeStatus', this.refreshNodes, true)
   }
 
-  componentDidUpdate(prevProps) {
+  componentDidUpdate(prevProps: Props) {
     if (this.props.files && prevProps.files !== this.props.files) {
       this.refreshNodes()
+    }
+    if (this.props.selectedNode !== prevProps.selectedNode) {
+      const { nodes } = this.state
+      const selectedNode = this.props.selectedNode.replace(`${this.props.id}/`, '')
+      this.traverseTree(nodes, n => (n.isSelected = selectedNode === n.id))
+      this.setState({ nodes })
     }
   }
 
@@ -38,49 +59,66 @@ class FileNavigator extends React.Component<Props, State> {
       return
     }
 
-    const readOnlyIcon = (
-      <Tooltip content="This file is read only">
-        <Icon icon="lock" />
+    const icons = {
+      readOnly: (
+        <Tooltip content={lang.tr('module.code-editor.navigator.isReadOnly')}>
+          <Icon icon="lock" />
+        </Tooltip>
+      ),
+      hasChanges: <Icon icon="record" />
+    }
+
+    const exampleLabel = (
+      <Tooltip
+        content={
+          <span>
+            {lang.tr('module.code-editor.navigator.codeSamples')}
+            <br /> {lang.tr('module.code-editor.navigator.codeSamples2')}
+            <br /> <br /> {lang.tr('module.code-editor.navigator.cannotBeEdited')}
+          </span>
+        }
+        hoverOpenDelay={500}
+        position={Position.BOTTOM}
+      >
+        <strong>{EXAMPLE_FOLDER_LABEL}</strong>
       </Tooltip>
     )
 
     const filter = this.props.filters && this.props.filters.filename.toLowerCase()
     const nodes: ITreeNode[] = this.props.files.map(dir => ({
       id: dir.label,
-      label: dir.label,
-      icon: 'folder-close',
+      label: dir.label === EXAMPLE_FOLDER_LABEL ? exampleLabel : dir.label,
+      icon: dir.label === EXAMPLE_FOLDER_LABEL ? FOLDER_EXAMPLE : FOLDER_ICON,
       hasCaret: true,
       isExpanded: true,
-      childNodes: buildTree(dir.files, this.props.expandedNodes, filter, readOnlyIcon)
+      childNodes: buildTree(dir.files, this.props.expandedNodes, this.props.editor.openedFiles, filter, icons)
     }))
+
+    // Examples are hidden by default so the view is not cluttered
+    this.traverseTree(nodes, n => n.id === EXAMPLE_FOLDER_LABEL && (n.isExpanded = false))
+
+    if (filter) {
+      this.traverseTree(nodes, n => (n.isExpanded = true))
+    }
 
     this.setState({ nodes })
   }
 
-  private handleNodeClick = (node: ITreeNode) => {
-    const originallySelected = node.isSelected
-    this.traverseTree(this.state.nodes, n => (n.isSelected = false))
-    node.isSelected = originallySelected !== null
+  private handleNodeClick = async (node: ITreeNode) => {
+    this.traverseTree(this.state.nodes, n => (n.isSelected = n.id === node.id))
 
     // If nodeData is set, it's a file, otherwise a folder
     if (node.nodeData) {
-      this.props.editor.openFile(node.nodeData as EditableFile)
-      this.forceUpdate()
+      await this.props.editor.openFile(node.nodeData as EditableFile)
     } else {
-      node.isExpanded ? this.handleNodeCollapse(node) : this.handleNodeExpand(node)
+      this.handleNodeExpand(node, !node.isExpanded)
     }
+    this.props.onNodeStateSelected(this.props.id + '/' + node.id)
   }
 
-  private handleNodeCollapse = (node: ITreeNode) => {
-    this.props.onNodeStateChanged(node.id as string, false)
-    node.isExpanded = false
-
-    this.forceUpdate()
-  }
-
-  private handleNodeExpand = (node: ITreeNode) => {
-    this.props.onNodeStateChanged(node.id as string, true)
-    node.isExpanded = true
+  private handleNodeExpand = (node: ITreeNode, isExpanded: boolean) => {
+    this.props.onNodeStateExpanded(node.id as string, isExpanded)
+    node.isExpanded = isExpanded
 
     this.forceUpdate()
   }
@@ -103,30 +141,121 @@ class FileNavigator extends React.Component<Props, State> {
       return null
     }
 
-    const isDisabled = node.nodeData.name.startsWith('.')
     const file = node.nodeData as EditableFile
+
+    if (this.props.contextMenuType === 'moduleConfig') {
+      if (!file.botId) {
+        ContextMenu.show(
+          <Menu>
+            <MenuItem
+              id="btn-duplicateCurrent"
+              icon="duplicate"
+              text={lang.tr('module.code-editor.navigator.duplicateToCurrent')}
+              onClick={() => this.props.duplicateFile(file, { forCurrentBot: true, keepSameName: true })}
+            />
+          </Menu>,
+          { left: e.clientX, top: e.clientY }
+        )
+      } else {
+        ContextMenu.show(
+          <Menu>
+            <MenuItem
+              id="btn-delete"
+              icon="delete"
+              text={lang.tr('delete')}
+              onClick={() => this.props.deleteFile(file)}
+            />
+          </Menu>,
+          { left: e.clientX, top: e.clientY }
+        )
+      }
+
+      return
+    }
+
+    if (file.isExample) {
+      if (file.type === 'action_legacy') {
+        ContextMenu.show(
+          <Menu>
+            <MenuItem
+              id="btn-duplicateCurrent"
+              icon="duplicate"
+              text={lang.tr('module.code-editor.navigator.copyExample')}
+              onClick={() => this.props.duplicateFile(file, { forCurrentBot: true, keepSameName: true })}
+            />
+          </Menu>,
+          { left: e.clientX, top: e.clientY }
+        )
+      } else if (file.type === 'hook') {
+        ContextMenu.show(
+          <Menu>
+            {BOT_SCOPED_HOOKS.includes(file.hookType) && (
+              <MenuItem
+                id="btn-duplicateCurrent"
+                icon="duplicate"
+                text={lang.tr('module.code-editor.navigator.copyExample')}
+                onClick={() => this.props.duplicateFile(file, { forCurrentBot: true, keepSameName: true })}
+              />
+            )}
+            <MenuItem
+              id="btn-duplicateCurrent"
+              icon="duplicate"
+              text={lang.tr('module.code-editor.navigator.copyExampleToHooks')}
+              onClick={() => this.props.duplicateFile(file, { forCurrentBot: false, keepSameName: true })}
+            />
+          </Menu>,
+          { left: e.clientX, top: e.clientY }
+        )
+      }
+
+      return
+    }
+
+    const isDisabled = file.name.startsWith('.')
+    const canMove = this.props.store.editor.isAdvanced && this.props.moveFile
 
     ContextMenu.show(
       <Menu>
-        <MenuItem id="btn-rename" icon="edit" text="Rename" onClick={() => this.renameTreeNode(node)} />
-        <MenuItem id="btn-delete" icon="delete" text="Delete" onClick={() => this.props.deleteFile(file)} />
-        <MenuDivider />
-        <MenuItem id="btn-duplicate" icon="duplicate" text="Duplicate" onClick={() => this.props.duplicateFile(file)} />
+        {canMove ? (
+          <MenuItem
+            id="btn-move"
+            icon="edit"
+            text={lang.tr('module.code-editor.navigator.renameMove')}
+            onClick={() => this.props.moveFile(file)}
+          />
+        ) : (
+          <MenuItem id="btn-rename" icon="edit" text={lang.tr('rename')} onClick={() => this.renameTreeNode(node)} />
+        )}
+        <MenuItem id="btn-delete" icon="delete" text={lang.tr('delete')} onClick={() => this.props.deleteFile(file)} />
         <MenuDivider />
         <MenuItem
-          id="btn-enable"
-          icon="endorsed"
-          text="Enable"
-          disabled={!isDisabled}
-          onClick={() => this.props.enableFile(file)}
+          id="btn-duplicate"
+          icon="duplicate"
+          text={lang.tr('duplicate')}
+          onClick={() => this.props.duplicateFile(file)}
         />
         <MenuItem
-          id="btn-disable"
-          icon="disable"
-          text="Disable"
-          disabled={isDisabled}
-          onClick={() => this.props.disableFile(file)}
+          id="btn-download"
+          icon="download"
+          text={lang.tr('download')}
+          onClick={() => this.props.store.api.downloadFile(file)}
         />
+        <MenuDivider />
+        {isDisabled ? (
+          <MenuItem
+            id="btn-enable"
+            icon="endorsed"
+            text={lang.tr('enable')}
+            onClick={() => this.props.enableFile(file)}
+          />
+        ) : (
+          <MenuItem
+            id="btn-disable"
+            icon="disable"
+            text={lang.tr('disable')}
+            onClick={() => this.props.disableFile(file)}
+          />
+        )}
       </Menu>,
       { left: e.clientX, top: e.clientY }
     )
@@ -162,8 +291,8 @@ class FileNavigator extends React.Component<Props, State> {
   }
 
   render() {
-    if (!this.state.nodes) {
-      return null
+    if (!this.state.nodes.length) {
+      return <div className={style.padding}>{lang.tr('module.code-editor.navigator.noFilesFound')}</div>
     }
 
     return (
@@ -172,8 +301,8 @@ class FileNavigator extends React.Component<Props, State> {
         contents={this.state.nodes}
         onNodeContextMenu={this.handleContextMenu}
         onNodeClick={this.handleNodeClick}
-        onNodeCollapse={this.handleNodeCollapse}
-        onNodeExpand={this.handleNodeExpand}
+        onNodeCollapse={n => this.handleNodeExpand(n, false)}
+        onNodeExpand={n => this.handleNodeExpand(n, true)}
         className={Classes.ELEVATION_0}
       />
     )
@@ -192,12 +321,17 @@ export default inject(({ store }: { store: RootStore }) => ({
 }))(observer(FileNavigator))
 
 type Props = {
+  id: string
   files: any
   store?: RootStore
   editor?: EditorStore
   disableContextMenu?: boolean
-  onNodeStateChanged: (id: string, isExpanded: boolean) => void
+  contextMenuType?: string
+  onNodeStateExpanded: (id: string, isExpanded: boolean) => void
+  onNodeStateSelected: (fullyQualifiedId: string) => void
+  moveFile?: (file: any) => void
   expandedNodes: object
+  selectedNode: string
 } & Pick<StoreDef, 'filters' | 'deleteFile' | 'renameFile' | 'disableFile' | 'enableFile' | 'duplicateFile'>
 
 interface State {

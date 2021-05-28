@@ -2,17 +2,16 @@ import 'bluebird-global'
 import * as sdk from 'botpress/sdk'
 import _ from 'lodash'
 
-import choice from './choice'
+import en from '../translations/en.json'
+import es from '../translations/es.json'
+import fr from '../translations/fr.json'
+
 import apiCall from './callApi'
+import choice from './choice'
+import email from './email'
 import slot from './slot'
 
-export type Extension = {}
-
-export type SDK = typeof sdk & Extension
-
-const onServerStarted = async (bp: SDK) => {}
-
-const onServerReady = async (bp: SDK) => {
+const onServerReady = async (bp: typeof sdk) => {
   await choice.setup(bp)
 }
 
@@ -23,30 +22,39 @@ const onModuleUnmount = async (bp: typeof sdk) => {
 const skillsToRegister: sdk.Skill[] = [
   {
     id: 'choice',
-    name: 'Choice',
+    name: 'module.basic-skills.choice',
+    icon: 'numbered-list',
     flowGenerator: choice.generateFlow
   },
   {
     id: 'CallAPI',
-    name: 'Call API',
+    name: 'module.basic-skills.callApi',
+    icon: 'code-block',
     flowGenerator: apiCall.generateFlow
   },
   {
     id: 'Slot',
-    name: 'Slot',
+    name: 'module.basic-skills.slotFilling',
+    icon: 'comparison',
     flowGenerator: slot.generateFlow
+  },
+  {
+    id: 'SendEmail',
+    name: 'module.basic-skills.sendEmail',
+    icon: 'envelope',
+    flowGenerator: email.generateFlow
   }
 ]
 
 const entryPoint: sdk.ModuleEntryPoint = {
-  onServerStarted,
   onServerReady,
   onModuleUnmount,
+  translations: { en, fr, es },
   definition: {
     name: 'basic-skills',
     menuIcon: 'fiber_smart_record',
     fullName: 'Basic Skills',
-    homepage: 'https://botpress.io',
+    homepage: 'https://botpress.com',
     noInterface: true,
     plugins: [],
     moduleView: { stretched: true }

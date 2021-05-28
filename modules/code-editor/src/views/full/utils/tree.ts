@@ -1,12 +1,15 @@
 import { ITreeNode } from '@blueprintjs/core'
+import { FileWithMetadata } from 'full/Editor'
 import find from 'lodash/find'
 
 import { EditableFile } from '../../../backend/typings'
 
-const FOLDER_ICON = 'folder-close'
-const DOCUMENT_ICON = 'document'
+export const EXAMPLE_FOLDER_LABEL = 'Examples'
+export const FOLDER_ICON = 'folder-close'
+export const DOCUMENT_ICON = 'document'
+export const FOLDER_EXAMPLE = 'lightbulb'
 
-const addNode = (tree: ITreeNode, folders: ITreeNode[], file, data: any, secondaryLabel?: any) => {
+const addNode = (tree: ITreeNode, folders: ITreeNode[], file, data: any, secondaryLabel?: any, isOpen?) => {
   for (const folderDesc of folders) {
     let folder = find(tree.childNodes, folderDesc) as ITreeNode | undefined
     if (!folder) {
@@ -16,11 +19,11 @@ const addNode = (tree: ITreeNode, folders: ITreeNode[], file, data: any, seconda
     tree = folder
   }
 
-  tree.childNodes.push({ ...file, ...data, secondaryLabel })
+  tree.childNodes.push({ ...file, ...data, secondaryLabel, isOpen })
 }
 
-export const splitPath = (location: string, expandedNodeIds: object) => {
-  const paths = location.split('/')
+export const splitPath = (fileData: EditableFile, expandedNodeIds: object) => {
+  const paths = fileData.location.split('/')
   const filename = paths[paths.length - 1]
   const fileFolders = paths.slice(0, paths.length - 1)
   const folders: ITreeNode[] = []
@@ -47,15 +50,23 @@ export const splitPath = (location: string, expandedNodeIds: object) => {
 export const buildTree = (
   files: EditableFile[],
   expandedNodeIds: object,
+  openedFiles: FileWithMetadata[],
   filterFileName: string | undefined,
-  readonlyIcon: any
+  icons: any
 ) => {
   const tree: ITreeNode = { id: 'root', label: '<root>', childNodes: [] }
 
   files.forEach(fileData => {
-    const { folders, file } = splitPath(fileData.location, expandedNodeIds)
+    const { folders, file } = splitPath(fileData, expandedNodeIds)
     if (!filterFileName || !filterFileName.length || file.label.includes(filterFileName)) {
-      addNode(tree, folders, file, { nodeData: fileData }, fileData.readOnly ? readonlyIcon : undefined)
+      const openedFile = openedFiles.find(x => x.location === fileData.location)
+
+      let icon = fileData.readOnly ? icons.readOnly : undefined
+      if (openedFile?.hasChanges) {
+        icon = icons.hasChanges
+      }
+
+      addNode(tree, folders, file, { nodeData: fileData }, icon, !!openedFile)
     }
   })
 

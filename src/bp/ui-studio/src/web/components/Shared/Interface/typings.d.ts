@@ -1,6 +1,7 @@
-import { IconName, MaybeElement, Position } from '@blueprintjs/core'
+import { IconName, MaybeElement, Position, IDialogProps } from '@blueprintjs/core'
 import React from 'react'
 
+/* @deprecated Please use import { ModuleUI } from 'botpress/shared' */
 declare module 'botpress/ui' {
   export function Container(props: ContainerProps): JSX.Element
   export function SidePanelSection(props: SidePanelSectionProps): JSX.Element
@@ -14,7 +15,6 @@ declare module 'botpress/ui' {
   export function LeftToolbarButtons(props: ToolbarButtonsProps): JSX.Element
   export function RightToolbarButtons(props: ToolbarButtonsProps): JSX.Element
   export function InfoTooltip(props: InfoTooltipProps): JSX.Element
-
   export const { Item, ItemAction, SectionAction }
 }
 
@@ -24,13 +24,13 @@ declare global {
     __BP_VISITOR_ID: string
     botpressWebChat: any
     BOT_API_PATH: string
+    STUDIO_API_PATH: string
     API_PATH: string
-    BOTPRESS_VERSION: string
+    APP_VERSION: string
     BOT_NAME: string
     BOT_ID: string
     BP_BASE_PATH: string
     SEND_USAGE_STATS: boolean
-    BOTPRESS_FLOW_EDITOR_DISABLED: boolean
     botpress: {
       [moduleName: string]: any
     }
@@ -52,6 +52,8 @@ export interface ContainerProps {
   keyMap?: {
     [id: string]: string
   }
+  /** Makes the content scrollable vertically on overflow */
+  yOverflowScroll?: boolean
   /** Add handlers for existing combinations in keyboardShortcuts.js, or create custom ones in combination to keyMap  */
   keyHandlers?: {
     [id: string]: (keyEvent?: KeyboardEvent) => void
@@ -61,7 +63,7 @@ export interface ContainerProps {
 
 export interface SplashScreenProps {
   title: string
-  description?: string
+  description?: string | JSX.Element
   /** The name of the icon to use. Can also be a JSX element */
   icon?: IconName | MaybeElement
   readonly children?: React.ReactNode
@@ -70,14 +72,15 @@ export interface SplashScreenProps {
 export interface InfoTooltipProps {
   /** The text displayed when the cursor is over the icon */
   text: string
-  /** The icon to display. By default it will use info */
-  icon?: 'info' | 'help'
+  /** The icon to display. By default it will use 'info-sign' */
+  icon?: IconName | MaybeElement
   /** Where the tooltip will be directed. By default, it's right */
   position?: Position
 }
 
 export interface SidePanelProps {
   readonly children: React.ReactNode
+  style?: any
 }
 
 export interface ItemListProps {
@@ -86,7 +89,7 @@ export interface ItemListProps {
   onElementClicked?: (item: Item) => void
 }
 
-interface Item {
+export interface Item {
   id?: string
   label: string
   /** This can be used when executing actions on the items */
@@ -156,14 +159,21 @@ export interface KeyboardShortcutsProps {
 }
 
 export interface SearchBarProps {
+  className?: string
+  /** The input element ID */
+  id?: string
   /** Text to display when there's no input value */
   placeholder?: string
+  /** Set value when used as controled component */
+  value?: string
   /** This is called whenever the text in the input changes */
   onChange?: (text: string) => void
   /** The name of the icon to use. Can also be a JSX element */
   icon?: IconName | MaybeElement
   /** Show or hide button */
   showButton?: boolean
+  /** Called when search input loses focus */
+  onBlur?: (e: React.FocusEvent) => void
   /** This is called when the user clicks on the button */
   onButtonClick?: (e: React.MouseEvent) => void
 }

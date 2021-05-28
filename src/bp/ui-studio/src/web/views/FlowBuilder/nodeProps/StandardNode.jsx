@@ -1,3 +1,4 @@
+import { lang } from 'botpress/shared'
 import React, { Component, Fragment } from 'react'
 
 import { Tabs, Tab, Badge, Panel } from 'react-bootstrap'
@@ -11,8 +12,11 @@ const style = require('./style.scss')
 
 export default class StandardNodePropertiesPanel extends Component {
   renameNode = text => {
-    if (text && text !== this.props.node.name) {
-      this.props.updateNode({ name: text })
+    if (text) {
+      const alreadyExists = this.props.flow.nodes.find(x => x.name === text)
+      if (!alreadyExists) {
+        this.props.updateNode({ name: text })
+      }
     }
   }
 
@@ -21,21 +25,17 @@ export default class StandardNodePropertiesPanel extends Component {
   }
 
   render() {
-    const { node, readOnly } = this.props
-
-    const onNameMounted = input => {
-      if (input.value.startsWith('node-')) {
-        input.focus()
-        input.setSelectionRange(0, 1000)
-      }
-    }
+    const { node, readOnly, isLastNode } = this.props
 
     return (
       <div className={style.node}>
         <Panel>
           <EditableInput
+            /* We should always sugest that the name should be changed
+             if the node has the default name and it is the last created */
+            key={node.id}
+            shouldFocus={isLastNode && node.name.match(/node-(\w|\n){4}$/g)}
             readOnly={readOnly}
-            onMount={onNameMounted}
             value={node.name}
             className={style.name}
             onChanged={this.renameNode}
@@ -48,14 +48,14 @@ export default class StandardNodePropertiesPanel extends Component {
               eventKey="on_enter"
               title={
                 <Fragment>
-                  <Badge>{(node.onEnter && node.onEnter.length) || 0}</Badge> On Enter
+                  <Badge>{(node.onEnter && node.onEnter.length) || 0}</Badge> {lang.tr('studio.flow.node.onEnter')}
                 </Fragment>
               }
             >
               <ActionSection
                 readOnly={readOnly}
                 items={node.onEnter}
-                header="On Enter"
+                header={lang.tr('studio.flow.node.onEnter')}
                 onItemsUpdated={items => this.props.updateNode({ onEnter: items })}
                 copyItem={item => this.props.copyFlowNodeElement({ action: item })}
                 pasteItem={() => this.props.pasteFlowNodeElement('onEnter')}
@@ -68,15 +68,16 @@ export default class StandardNodePropertiesPanel extends Component {
               eventKey="on_receive"
               title={
                 <Fragment>
-                  <Badge>{(node.onReceive && node.onReceive.length) || 0}</Badge> On Receive
+                  <Badge>{(node.onReceive && node.onReceive.length) || 0}</Badge>{' '}
+                  {lang.tr('studio.flow.node.onReceive')}
                 </Fragment>
               }
             >
               <ActionSection
                 readOnly={readOnly}
                 items={node.onReceive}
-                header="On Receive"
-                waitable={true}
+                header={lang.tr('studio.flow.node.onReceive')}
+                waitable
                 onItemsUpdated={items => this.props.updateNode({ onReceive: items })}
                 copyItem={item => this.props.copyFlowNodeElement({ action: item })}
                 pasteItem={() => this.props.pasteFlowNodeElement('onReceive')}
@@ -88,14 +89,14 @@ export default class StandardNodePropertiesPanel extends Component {
             eventKey="transitions"
             title={
               <Fragment>
-                <Badge>{(node.next && node.next.length) || 0}</Badge> Transitions
+                <Badge>{(node.next && node.next.length) || 0}</Badge> {lang.tr('studio.flow.node.transitions')}
               </Fragment>
             }
           >
             <TransitionSection
               readOnly={readOnly}
               items={node.next}
-              header="Transitions"
+              header={lang.tr('studio.flow.node.transitions')}
               currentFlow={this.props.flow}
               currentNodeName={node.name}
               subflows={this.props.subflows}

@@ -1,51 +1,34 @@
-import { Collapse, Icon } from '@blueprintjs/core'
-import { SidePanelSection } from 'botpress/ui'
-import { RootStore } from 'full/store'
+import { Tab, Tabs } from '@blueprintjs/core'
+import { lang } from 'botpress/shared'
 import { inject, observer } from 'mobx-react'
 import React, { useState } from 'react'
+import { RootStore } from '../store'
+import style from './style.scss'
 
 const FileStatus = props => {
-  const [showErrors, setErrorDisplayed] = useState(false)
-  const actions = [
-    { label: 'Discard', icon: <Icon icon="disable" />, onClick: props.editor.discardChanges },
-    { label: 'Save', icon: <Icon icon="floppy-disk" />, onClick: props.editor.saveChanges }
-  ]
-
+  const [tab, setTab] = useState<any>('problems')
   const problems = props.editor.fileProblems
   if (!problems || !problems.length) {
-    return (
-      <SidePanelSection label={'File Information'} actions={actions}>
-        <React.Fragment />
-      </SidePanelSection>
-    )
+    return null
   }
 
   return (
-    <SidePanelSection label={'File Information'} actions={actions}>
-      <div style={{ padding: 5 }}>
-        <strong>Warning</strong>
-        <p>There are {problems.length} errors in your file.</p>
-        <p>Please make sure to fix them before saving.</p>
-
-        <span onClick={() => setErrorDisplayed(!showErrors)} style={{ cursor: 'pointer' }}>
-          {showErrors && <Icon icon="caret-down" />}
-          {!showErrors && <Icon icon="caret-up" />}
-          View details
-        </span>
-
-        <Collapse isOpen={showErrors}>
-          <div style={{ paddingLeft: 15 }}>
-            {problems.map(x => (
-              <div key={x.message} style={{ marginBottom: 10 }}>
-                Line <strong>{x.startLineNumber}</strong>
-                <br />
-                {x.message}
+    <Tabs className={style.tabs} onChange={tab => setTab(tab)} selectedTabId={tab}>
+      <Tab
+        id="problems"
+        className={style.tab}
+        title={`${lang.tr('problems')}${problems.length ? ` (${problems.length})` : ''}`}
+        panel={
+          <div>
+            {problems.map((x, idx) => (
+              <div key={`${idx}_${x.message.substr(0, 10)}`} style={{ marginBottom: 10 }}>
+                {lang.tr('line')} <strong>{x.startLineNumber}</strong> - {x.message}
               </div>
             ))}
           </div>
-        </Collapse>
-      </div>
-    </SidePanelSection>
+        }
+      />
+    </Tabs>
   )
 }
 
